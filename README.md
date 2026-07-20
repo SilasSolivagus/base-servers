@@ -1,0 +1,112 @@
+<div align="center">
+
+# base-servers
+
+### The identity & permission layer for the agentic era.
+
+**Accounts, organizations, and authorization — for humans, services, and AI agents alike.**
+Self-hosted. Multi-tenant. Standards-based. Stop rebuilding this layer in every system — just call it.
+
+![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
+![Status](https://img.shields.io/badge/status-alpha-orange)
+![Ring 0](https://img.shields.io/badge/Ring%200-Phase%201%20shipped-brightgreen)
+![Tests](https://img.shields.io/badge/tests-green%20(real%20containers)-brightgreen)
+![PRs](https://img.shields.io/badge/PRs-welcome-blueviolet)
+
+</div>
+
+---
+
+> **Status: early / alpha.** The foundation (Phase 1) is built and tested end-to-end against real infrastructure. Agent delegation, RBAC, and organizations are next on the [roadmap](#-roadmap). Not production-ready yet — but the spine is real.
+
+## Why base-servers
+
+Every new system rebuilds the same plumbing: accounts, login, sessions, orgs, roles, permissions. It's weeks of undifferentiated work, re-implemented (and re-broken) everywhere, and it's exactly the layer where a subtle bug becomes a breach.
+
+Worse, a new kind of user just arrived that traditional IAM was never designed for: **AI agents**. Agents cross trust boundaries, act *on behalf of* people, and move at machine speed. Hand one your API key and you've given away a permanent, over-privileged, unrevocable, unauditable credential.
+
+**base-servers is that layer, done once, done right — and built agent-native from day one.**
+
+## ✨ What makes it different
+
+- **Three first-class principals — human · service · AI agent.** Not "users, plus a bolted-on token." Agents are modeled as their own principal type, with an owner, a purpose, and a delegation chain.
+- **Agent-native delegation** *(Phase 3)* — an agent gets a **scoped, time-boxed, revocable** credential whose authority **can never exceed the person who granted it**, via OAuth2 Token Exchange / On-Behalf-Of. Every action stays attributable; a kill-switch revokes in seconds.
+- **Pluggable identity engine behind a clean adapter.** We don't reinvent OAuth crypto — we compose a proven engine behind a capability-flagged interface, so you're never locked to one vendor.
+- **Self-hosted & multi-tenant from day one.** One shared deployment serves all your systems and tenants; your data stays yours.
+- **Speak the lingua franca.** OAuth2 / OIDC for auth; a single [Connect](https://connectrpc.com) handler serves gRPC, gRPC-Web, and plain HTTP/JSON — callable from any language in a few lines.
+- **Modular onion.** A tiny mandatory core plus optional, independently-adoptable modules. Enable only what your product shape actually needs — no swallowing the whole platform.
+
+## 🏗 Architecture
+
+<div align="center">
+  <img src="docs/diagrams/ring0-architecture.png" alt="base-servers Ring 0 architecture" width="820">
+</div>
+
+Consumers (any system, or an AI agent) talk to the **base-servers API layer** over OIDC / gRPC / REST. That layer owns the net-new value — the unified API, the agent delegation logic, and permission checks — and sits on a swappable **identity engine** + PostgreSQL behind an adapter. The engine is an implementation detail; you program against base-servers' own API.
+
+## 🚀 Quick start
+
+> Phase 1 lets you create and fetch principals (human / service / agent) end-to-end.
+
+```bash
+# 1. Bring up the stack (identity engine + Postgres)
+docker compose -f deploy/docker-compose.yml up -d
+
+# 2. Apply the schema
+export DATABASE_URL="postgres://base:base@localhost:5432/baseservers?sslmode=disable"
+goose -dir db/migrations postgres "$DATABASE_URL" up
+
+# 3. Run base-servers
+KEYCLOAK_URL=http://localhost:8080 go run ./cmd/base-servers
+```
+
+```bash
+# Health
+curl -s localhost:8081/healthz            # -> ok
+
+# Register an AI agent as a first-class principal (Connect JSON over HTTP)
+curl -X POST localhost:8081/baseservers.v1.PrincipalService/CreatePrincipal \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"PRINCIPAL_TYPE_AGENT","displayName":"planner","ownerPrincipalId":"u1","purpose":"triage"}'
+```
+
+Everything above is covered by tests that spin up **real** Keycloak + Postgres containers — no mocks.
+
+## 🗺 Roadmap
+
+base-servers is scoped as an onion — a small mandatory core, then optional rings. **Ring 0** (identity + org + authz) is the first sub-project, delivered in four phases:
+
+| Phase | Scope | Status |
+|-------|-------|--------|
+| **1 · Foundation** | Go service, pluggable identity-engine adapter, three-type principals, Postgres store, Connect RPC API | ✅ **Shipped** |
+| **2 · Org & Permissions** | Organizations, teams, membership, RBAC roles, `check(subject, action, resource)`, resource ownership | ⏳ Next |
+| **3 · Agent Delegation** *(the headline)* | Token-exchange narrow tokens, effective-perms ≤ delegator, short-TTL + denylist revocation, DPoP sender-binding | ⏳ Planned |
+| **4 · Front-door & Delivery** | OIDC-fronted login + SSO, headless admin API, multi-tenant isolation, one-command deploy | ⏳ Planned |
+
+Outer rings (notifications, audit, billing, webhooks, agent-to-agent messaging …) come later, each as its own module.
+
+<details>
+<summary>See the Phase 1 implementation status on the architecture map</summary>
+
+<div align="center">
+  <img src="docs/diagrams/ring0-architecture-phase1-status.png" alt="Phase 1 implementation status" width="820">
+</div>
+</details>
+
+## 🧱 Tech
+
+Go · [Connect](https://connectrpc.com) (gRPC + HTTP/JSON) · pgx + sqlc · testcontainers · a pluggable OAuth2/OIDC identity engine (Keycloak by default, swappable behind the adapter).
+
+## 🤝 Contributing
+
+Early days — issues, ideas, and PRs are welcome. Tests run against real containers (`go test ./...` needs Docker). Please keep changes focused and covered.
+
+## 📄 License
+
+TBD. Intended to be permissive so any team can self-host and build on it.
+
+---
+
+<div align="center">
+<sub>base-servers — build the app, not the auth layer.</sub>
+</div>
