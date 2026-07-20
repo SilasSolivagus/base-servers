@@ -2,13 +2,17 @@ package principal
 
 import (
 	"context"
+	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/SilasSolivagus/base-servers/internal/engine"
 	db "github.com/SilasSolivagus/base-servers/internal/principal/db"
 )
+
+var ErrNotFound = errors.New("principal not found")
 
 // 放在 store.go 顶部
 func pgText(s string) pgtype.Text { return pgtype.Text{String: s, Valid: s != ""} }
@@ -36,6 +40,9 @@ func (s *Store) Insert(ctx context.Context, p Principal) error {
 func (s *Store) Get(ctx context.Context, id string) (Principal, error) {
 	row, err := s.q.GetPrincipal(ctx, id)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Principal{}, ErrNotFound
+		}
 		return Principal{}, err
 	}
 	return Principal{

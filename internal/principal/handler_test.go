@@ -39,4 +39,53 @@ func TestHandlerCreateAndGet(t *testing.T) {
 	if got.Msg.Principal.OwnerPrincipalId != "u1" {
 		t.Fatalf("owner mismatch: %+v", got.Msg.Principal)
 	}
+	if got.Msg.Principal.Type != v1.PrincipalType_PRINCIPAL_TYPE_AGENT {
+		t.Fatalf("type mismatch: %+v", got.Msg.Principal)
+	}
+	if got.Msg.Principal.DisplayName != "planner" {
+		t.Fatalf("display_name mismatch: %+v", got.Msg.Principal)
+	}
+	if got.Msg.Principal.Purpose != "triage" {
+		t.Fatalf("purpose mismatch: %+v", got.Msg.Principal)
+	}
+}
+
+func TestHandlerCreatePrincipalInvalidInput(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	svc := principal.NewService(fake.New(), principal.NewStore(pool))
+	mux := http.NewServeMux()
+	principal.NewHandler(svc).Register(mux)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	client := baseserversv1connect.NewPrincipalServiceClient(http.DefaultClient, srv.URL)
+	_, err := client.CreatePrincipal(context.Background(), connect.NewRequest(&v1.CreatePrincipalRequest{
+		Type: v1.PrincipalType_PRINCIPAL_TYPE_AGENT, DisplayName: "planner",
+	}))
+	if err == nil {
+		t.Fatal("expected error for agent without owner_principal_id")
+	}
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("expected CodeInvalidArgument, got %v: %v", connect.CodeOf(err), err)
+	}
+}
+
+func TestHandlerGetPrincipalNotFound(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	svc := principal.NewService(fake.New(), principal.NewStore(pool))
+	mux := http.NewServeMux()
+	principal.NewHandler(svc).Register(mux)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	client := baseserversv1connect.NewPrincipalServiceClient(http.DefaultClient, srv.URL)
+	_, err := client.GetPrincipal(context.Background(), connect.NewRequest(&v1.GetPrincipalRequest{
+		Id: "does-not-exist",
+	}))
+	if err == nil {
+		t.Fatal("expected error for missing principal")
+	}
+	if connect.CodeOf(err) != connect.CodeNotFound {
+		t.Fatalf("expected CodeNotFound, got %v: %v", connect.CodeOf(err), err)
+	}
 }

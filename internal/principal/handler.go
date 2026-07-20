@@ -2,6 +2,7 @@ package principal
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"connectrpc.com/connect"
@@ -48,7 +49,10 @@ func (h *Handler) CreatePrincipal(ctx context.Context, req *connect.Request[v1.C
 		Purpose:          req.Msg.Purpose,
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		if errors.Is(err, ErrInvalidInput) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&v1.CreatePrincipalResponse{Principal: toProto(p)}), nil
 }
@@ -56,7 +60,10 @@ func (h *Handler) CreatePrincipal(ctx context.Context, req *connect.Request[v1.C
 func (h *Handler) GetPrincipal(ctx context.Context, req *connect.Request[v1.GetPrincipalRequest]) (*connect.Response[v1.GetPrincipalResponse], error) {
 	p, err := h.svc.Get(ctx, req.Msg.Id)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, err)
+		if errors.Is(err, ErrNotFound) {
+			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&v1.GetPrincipalResponse{Principal: toProto(p)}), nil
 }
