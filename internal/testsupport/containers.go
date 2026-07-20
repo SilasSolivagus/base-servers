@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"os"
+	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 
@@ -94,17 +96,23 @@ func execKcadm(ctx context.Context, t *testing.T, c testcontainers.Container, ar
 
 func applyMigrations(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
-	sql, err := os.ReadFile("../../db/migrations/0001_principal.sql")
+	files, err := filepath.Glob("../../db/migrations/*.sql")
 	if err != nil {
-		t.Fatalf("read migration: %v", err)
+		t.Fatalf("glob migrations: %v", err)
 	}
-	// 只取 +goose Up 段(-- +goose Down 之前)
-	up := string(sql)
-	if i := indexOf(up, "-- +goose Down"); i >= 0 {
-		up = up[:i]
-	}
-	if _, err := pool.Exec(context.Background(), up); err != nil {
-		t.Fatalf("apply migration: %v", err)
+	sort.Strings(files)
+	for _, f := range files {
+		sql, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatalf("read migration %s: %v", f, err)
+		}
+		up := string(sql)
+		if i := indexOf(up, "-- +goose Down"); i >= 0 {
+			up = up[:i]
+		}
+		if _, err := pool.Exec(context.Background(), up); err != nil {
+			t.Fatalf("apply migration %s: %v", f, err)
+		}
 	}
 }
 
