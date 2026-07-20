@@ -31,6 +31,9 @@ func (c *Checker) CheckDelegated(ctx context.Context, token, action string, res 
 	if d.Revoked || time.Now().After(d.ExpiresAt) {
 		return false, nil // 黑名单/过期 → 拒
 	}
+	if res.OrgID != d.OrgID {
+		return false, nil // delegation is scoped to its org
+	}
 	if !contains(d.Scope, action) {
 		return false, nil // 范围外 → 拒
 	}
