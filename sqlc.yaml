@@ -21,3 +21,8 @@ sql:
     queries: db/query/role.sql
     gen:
       go: { package: db, out: internal/role/db, sql_package: pgx/v5 }
+  - engine: postgresql
+    schema: db/migrations
+    queries: db/query/authz.sql
+    gen:
+      go: { package: db, out: internal/authz/db, sql_package: pgx/v5 }
