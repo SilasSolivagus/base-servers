@@ -1,0 +1,22 @@
+syntax = "proto3";
+package baseservers.v1;
+option go_package = "github.com/SilasSolivagus/base-servers/gen/baseservers/v1;baseserversv1";
+
+message Organization { string id = 1; string name = 2; string parent_id = 3; }
+message Team { string id = 1; string org_id = 2; string name = 3; }
+
+message CreateOrganizationRequest { string name = 1; }
+message CreateOrganizationResponse { Organization organization = 1; }
+message CreateTeamRequest { string org_id = 1; string name = 2; }
+message CreateTeamResponse { Team team = 1; }
+message AddMemberRequest { string principal_id = 1; string org_id = 2; }
+message AddMemberResponse {}
+message AddTeamMemberRequest { string principal_id = 1; string team_id = 2; }
+message AddTeamMemberResponse {}
+
+service OrgService {
+  rpc CreateOrganization(CreateOrganizationRequest) returns (CreateOrganizationResponse);
+  rpc CreateTeam(CreateTeamRequest) returns (CreateTeamResponse);
+  rpc AddMember(AddMemberRequest) returns (AddMemberResponse);
+  rpc AddTeamMember(AddTeamMemberRequest) returns (AddTeamMemberResponse);
+}
