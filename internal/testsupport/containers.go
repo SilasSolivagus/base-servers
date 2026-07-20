@@ -2,6 +2,7 @@ package testsupport
 
 import (
 	"context"
+	"io"
 	"os"
 	"testing"
 	"time"
@@ -61,9 +62,34 @@ func StartKeycloak(t *testing.T) (baseURL, realm, user, pass string) {
 		t.Fatalf("start keycloak: %v", err)
 	}
 	t.Cleanup(func() { _ = c.Terminate(ctx) })
+
+	// master realm 默认 sslRequired=external:该机器的 Docker 网络会让
+	// admin-login 请求被判定为外部来源,从而要求 HTTPS。从容器内部(loopback)
+	// 用 kcadm 把 sslRequired 降为 NONE,让外部的 HTTP admin login(gocloak 用的
+	// 就是这个)能通过。
+	execKcadm(ctx, t, c, "/opt/keycloak/bin/kcadm.sh", "config", "credentials",
+		"--server", "http://localhost:8080", "--realm", "master",
+		"--user", "admin", "--password", "admin")
+	execKcadm(ctx, t, c, "/opt/keycloak/bin/kcadm.sh", "update", "realms/master",
+		"-s", "sslRequired=NONE")
+
 	host, _ := c.Host(ctx)
 	port, _ := c.MappedPort(ctx, "8080/tcp")
 	return "http://" + host + ":" + port.Port(), "master", "admin", "admin"
+}
+
+// execKcadm 在容器内跑一条命令,exec 出错或非 0 退出码都直接 t.Fatalf,
+// 带上完整输出,不吞错误。
+func execKcadm(ctx context.Context, t *testing.T, c testcontainers.Container, args ...string) {
+	t.Helper()
+	code, out, err := c.Exec(ctx, args)
+	if err != nil {
+		t.Fatalf("exec %v: %v", args, err)
+	}
+	output, _ := io.ReadAll(out)
+	if code != 0 {
+		t.Fatalf("exec %v: exit %d: %s", args, code, output)
+	}
 }
 
 func applyMigrations(t *testing.T, pool *pgxpool.Pool) {
