@@ -31,6 +31,28 @@ func TestKeycloakCreateAgentPrincipal(t *testing.T) {
 	}
 }
 
+func TestKeycloakCreateHumanPrincipal(t *testing.T) {
+	base, realm, user, pass := testsupport.StartKeycloak(t)
+	ad, err := keycloak.New(keycloak.Config{BaseURL: base, Realm: realm, AdminUser: user, AdminPass: pass})
+	if err != nil {
+		t.Fatalf("new adapter: %v", err)
+	}
+	id, err := ad.CreatePrincipal(context.Background(), engine.EnginePrincipal{
+		Type: engine.Human, DisplayName: "alice",
+		Metadata: map[string]string{"purpose": "ops"},
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	got, err := ad.GetPrincipal(context.Background(), id)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Type != engine.Human || got.Metadata["purpose"] != "ops" {
+		t.Fatalf("mismatch: %+v", got)
+	}
+}
+
 func TestKeycloakCapabilities(t *testing.T) {
 	base, realm, user, pass := testsupport.StartKeycloak(t)
 	ad, _ := keycloak.New(keycloak.Config{BaseURL: base, Realm: realm, AdminUser: user, AdminPass: pass})

@@ -2,7 +2,9 @@ package keycloak
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/Nerzal/gocloak/v13"
 
@@ -31,6 +33,26 @@ func (a *Adapter) login(ctx context.Context) (*gocloak.JWT, error) {
 	return a.cli.LoginAdmin(ctx, a.cfg.AdminUser, a.cfg.AdminPass, "master")
 }
 
+// ensureUnmanagedUserAttributes 确保 realm 的 user-profile 配置允许 unmanaged
+// attributes,否则 CreateUser 传入的 bs_* 自定义属性会被 Keycloak 静默丢弃。
+// gocloak/v13.9.0 未封装 users/profile 接口,这里直接复用其已导出的
+// GetRequestWithBearerAuth 发原始请求。
+func (a *Adapter) ensureUnmanagedUserAttributes(ctx context.Context, token string) error {
+	url := a.cfg.BaseURL + "/admin/realms/" + a.cfg.Realm + "/users/profile"
+	var profile map[string]interface{}
+	if _, err := a.cli.GetRequestWithBearerAuth(ctx, token).SetResult(&profile).Get(url); err != nil {
+		return fmt.Errorf("get user profile config: %w", err)
+	}
+	if profile["unmanagedAttributePolicy"] == "ENABLED" {
+		return nil
+	}
+	profile["unmanagedAttributePolicy"] = "ENABLED"
+	if _, err := a.cli.GetRequestWithBearerAuth(ctx, token).SetBody(profile).Put(url); err != nil {
+		return fmt.Errorf("update user profile config: %w", err)
+	}
+	return nil
+}
+
 func (a *Adapter) CreatePrincipal(ctx context.Context, p engine.EnginePrincipal) (string, error) {
 	tok, err := a.login(ctx)
 	if err != nil {
@@ -38,6 +60,11 @@ func (a *Adapter) CreatePrincipal(ctx context.Context, p engine.EnginePrincipal)
 	}
 	switch p.Type {
 	case engine.Human:
+		// Keycloak 26 默认启用 declarative user profile,未在 realm user-profile 中
+		// 声明的自定义属性(如 bs_type/bs_*)会被静默丢弃,必须先放开 unmanaged attributes。
+		if err := a.ensureUnmanagedUserAttributes(ctx, tok.AccessToken); err != nil {
+			return "", fmt.Errorf("configure user profile: %w", err)
+		}
 		attrs := map[string][]string{"bs_type": {string(p.Type)}}
 		for k, v := range p.Metadata {
 			attrs["bs_"+k] = []string{v}
@@ -71,9 +98,16 @@ func (a *Adapter) GetPrincipal(ctx context.Context, id string) (engine.EnginePri
 	if err != nil {
 		return engine.EnginePrincipal{}, err
 	}
-	// 先按 user 查,查不到再按 client 查。
-	if u, err := a.cli.GetUserByID(ctx, tok.AccessToken, a.cfg.Realm, id); err == nil && u != nil {
+	// 先按 user 查,查不到(404)再按 client 查;其他错误(网络/鉴权等)直接向上传播。
+	u, err := a.cli.GetUserByID(ctx, tok.AccessToken, a.cfg.Realm, id)
+	if err == nil && u != nil {
 		return fromAttrs(id, gocloak.PString(u.Username), attrsOf(u.Attributes)), nil
+	}
+	if err != nil {
+		var apiErr *gocloak.APIError
+		if !errors.As(err, &apiErr) || apiErr.Code != http.StatusNotFound {
+			return engine.EnginePrincipal{}, fmt.Errorf("get user %q: %w", id, err)
+		}
 	}
 	c, err := a.cli.GetClient(ctx, tok.AccessToken, a.cfg.Realm, id)
 	if err != nil {
