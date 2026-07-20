@@ -18,12 +18,16 @@ type Store struct{ q *db.Queries }
 func NewStore(pool *pgxpool.Pool) *Store { return &Store{q: db.New(pool)} }
 
 func (s *Store) Insert(ctx context.Context, p Principal) error {
+	caps := p.Capabilities
+	if caps == nil {
+		caps = []string{}
+	}
 	return s.q.InsertPrincipal(ctx, db.InsertPrincipalParams{
 		ID:               p.ID,
 		Type:             string(p.Type),
 		DisplayName:      p.DisplayName,
 		OwnerPrincipalID: pgText(p.OwnerPrincipalID),
-		Capabilities:     p.Capabilities,
+		Capabilities:     caps,
 		Purpose:          p.Purpose,
 		OnBehalfOf:       p.OnBehalfOf,
 	})
