@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 720" width="960" height="720">
+  <style>
+    text { font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang SC', 'Microsoft YaHei', 'Microsoft JhengHei', 'SimHei', sans-serif; }
+  </style>
+  <defs>
+    <marker id="arrow-gray" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280"/>
+    </marker>
+  </defs>
+  <rect width="960" height="720" fill="#ffffff"/>
+  <text x="480" y="38" text-anchor="middle" font-size="18" font-weight="600" fill="#111827">base-servers · Ring 0 架构 —— Phase 1 实现进度</text>
+  <text x="480" y="58" text-anchor="middle" font-size="12" fill="#6b7280">竖脊梁(调用方→API→Identity Adapter→引擎+Postgres)已打通;委托/权限/组织留待 Phase 2–3</text>
+  <rect x="60" y="80" width="840" height="104" rx="10" fill="#fbfbfd" stroke="#9ca3af" stroke-width="1.3" stroke-dasharray="6,4"/>
+  <text x="78" y="102" font-size="13" font-weight="600" fill="#374151">调用方 Consumers</text>
+  <rect x="100" y="116" width="340" height="48" rx="8" fill="#fff7ed" stroke="#fdba74" stroke-width="1.6"/>
+  <text x="270" y="136" text-anchor="middle" font-size="14" font-weight="600" fill="#111827">业务系统 · 任意语言</text>
+  <text x="270" y="154" text-anchor="middle" font-size="11" fill="#6b7280">gRPC/REST 可接 · OIDC 前台 P4</text>
+  <text x="430" y="132" text-anchor="end" font-size="10" font-weight="600" fill="#c2410c">部分</text>
+  <rect x="540" y="116" width="320" height="48" rx="8" fill="#fff7ed" stroke="#fdba74" stroke-width="1.6"/>
+  <text x="700" y="136" text-anchor="middle" font-size="14" font-weight="600" fill="#111827">AI Agents</text>
+  <text x="700" y="154" text-anchor="middle" font-size="11" fill="#6b7280">可建 agent 主体 · 委托 P3</text>
+  <text x="850" y="132" text-anchor="end" font-size="10" font-weight="600" fill="#c2410c">部分</text>
+  <rect x="60" y="250" width="840" height="200" rx="10" fill="#fbfbfd" stroke="#9ca3af" stroke-width="1.3" stroke-dasharray="6,4"/>
+  <text x="78" y="272" font-size="13" font-weight="600" fill="#374151">base-servers API 层 · 我们构建</text>
+  <rect x="96" y="290" width="220" height="52" rx="8" fill="#fff7ed" stroke="#fdba74" stroke-width="1.6"/>
+  <text x="206" y="312" text-anchor="middle" font-size="14" font-weight="600" fill="#111827">统一 API · 委托层</text>
+  <text x="206" y="330" text-anchor="middle" font-size="11" fill="#6b7280">API 面就绪 · 委托层 P3</text>
+  <text x="306" y="306" text-anchor="end" font-size="10" font-weight="600" fill="#c2410c">部分</text>
+  <rect x="360" y="290" width="180" height="52" rx="8" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.6"/>
+  <text x="450" y="312" text-anchor="middle" font-size="14" font-weight="600" fill="#111827">权限 check()</text>
+  <text x="450" y="330" text-anchor="middle" font-size="11" fill="#6b7280">RBAC + 归属 · P2</text>
+  <text x="530" y="306" text-anchor="end" font-size="10" font-weight="600" fill="#6b7280">P2</text>
+  <rect x="590" y="290" width="244" height="52" rx="8" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.6"/>
+  <text x="712" y="312" text-anchor="middle" font-size="14" font-weight="600" fill="#111827">组织·成员·角色 管理</text>
+  <text x="712" y="330" text-anchor="middle" font-size="11" fill="#6b7280">组织/角色 P2 · 委托签发 P3</text>
+  <text x="824" y="306" text-anchor="end" font-size="10" font-weight="600" fill="#6b7280">P2/P3</text>
+  <rect x="110" y="372" width="320" height="52" rx="8" fill="#f0fdf4" stroke="#86efac" stroke-width="1.6"/>
+  <text x="270" y="394" text-anchor="middle" font-size="14" font-weight="600" fill="#111827">Identity Adapter</text>
+  <text x="270" y="412" text-anchor="middle" font-size="11" fill="#6b7280">接口 + Keycloak + fake</text>
+  <text x="420" y="388" text-anchor="end" font-size="10" font-weight="600" fill="#15803d">已实现</text>
+  <rect x="500" y="372" width="340" height="52" rx="8" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.6"/>
+  <text x="670" y="394" text-anchor="middle" font-size="14" font-weight="600" fill="#111827">AuthZ Port</text>
+  <text x="670" y="412" text-anchor="middle" font-size="11" fill="#6b7280">RBAC + ownership · P2</text>
+  <text x="830" y="388" text-anchor="end" font-size="10" font-weight="600" fill="#6b7280">P2</text>
+  <rect x="60" y="516" width="840" height="112" rx="10" fill="#fbfbfd" stroke="#9ca3af" stroke-width="1.3" stroke-dasharray="6,4"/>
+  <text x="78" y="538" font-size="13" font-weight="600" fill="#374151">引擎与存储 Engine &amp; Storage</text>
+  <rect x="100" y="548" width="470" height="56" rx="8" fill="#fff7ed" stroke="#fdba74" stroke-width="1.6"/>
+  <text x="335" y="572" text-anchor="middle" font-size="14" font-weight="600" fill="#111827">身份引擎 Identity Engine</text>
+  <text x="335" y="590" text-anchor="middle" font-size="11" fill="#6b7280">已接入(建/查主体)· OIDC/Orgs/委托未走通</text>
+  <text x="560" y="564" text-anchor="end" font-size="10" font-weight="600" fill="#c2410c">部分</text>
+  <rect x="650" y="548" width="210" height="56" rx="8" fill="#f0fdf4" stroke="#86efac" stroke-width="1.6"/>
+  <text x="755" y="572" text-anchor="middle" font-size="14" font-weight="600" fill="#111827">PostgreSQL</text>
+  <text x="755" y="590" text-anchor="middle" font-size="11" fill="#6b7280">principal 已落库</text>
+  <text x="850" y="564" text-anchor="end" font-size="10" font-weight="600" fill="#15803d">已实现</text>
+  <path d="M 270,164 L 270,250" stroke="#6b7280" stroke-width="1.6" fill="none" marker-end="url(#arrow-gray)"/>
+  <text x="280" y="212" font-size="12" fill="#374151">OIDC / gRPC·REST</text>
+  <path d="M 700,164 L 700,250" stroke="#9ca3af" stroke-width="1.6" fill="none" stroke-dasharray="6,4" marker-end="url(#arrow-gray)"/>
+  <text x="710" y="208" font-size="12" fill="#9ca3af">Token-Exchange / OBO</text>
+  <text x="710" y="224" font-size="10" font-weight="600" fill="#c2410c">P3 未实现</text>
+  <path d="M 270,424 L 270,500 L 335,500 L 335,548" stroke="#6b7280" stroke-width="1.6" fill="none" marker-end="url(#arrow-gray)"/>
+  <path d="M 670,424 L 670,500 L 755,500 L 755,548" stroke="#9ca3af" stroke-width="1.6" fill="none" stroke-dasharray="6,4" marker-end="url(#arrow-gray)"/>
+  <path d="M 570,576 L 650,576" stroke="#6b7280" stroke-width="1.6" fill="none" marker-end="url(#arrow-gray)"/>
+  <rect x="60" y="653" width="16" height="16" rx="4" fill="#f0fdf4" stroke="#86efac" stroke-width="1.4"/>
+  <text x="84" y="666" font-size="12" fill="#374151">Phase 1 已实现</text>
+  <rect x="280" y="653" width="16" height="16" rx="4" fill="#fff7ed" stroke="#fdba74" stroke-width="1.4"/>
+  <text x="304" y="666" font-size="12" fill="#374151">Phase 1 部分(其余标 P2/P3/P4)</text>
+  <rect x="640" y="653" width="16" height="16" rx="4" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.4"/>
+  <text x="664" y="666" font-size="12" fill="#374151">后续 Phase(2–4)</text>
+  <text x="60" y="688" font-size="11" fill="#9ca3af">实线=已走通的流;虚线=后续 Phase 才接通的流。所有已实现部分对真 Keycloak+Postgres 测试全绿。</text>
+</svg>
