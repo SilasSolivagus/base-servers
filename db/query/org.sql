@@ -4,6 +4,9 @@ INSERT INTO organizations (name) VALUES ($1) RETURNING id, name, COALESCE(parent
 -- name: GetOrg :one
 SELECT id, name, COALESCE(parent_id::text, '') AS parent_id FROM organizations WHERE id = $1;
 
+-- name: DeleteOrg :exec
+DELETE FROM organizations WHERE id = $1;
+
 -- name: CreateTeam :one
 INSERT INTO teams (org_id, name) VALUES ($1, $2) RETURNING id, org_id, name;
 

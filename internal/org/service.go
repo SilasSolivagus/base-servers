@@ -30,7 +30,12 @@ func (s *Service) CreateOrg(ctx context.Context, name string) (Organization, err
 	if err != nil {
 		return Organization{}, err
 	}
+	// Seeding roles is not transactional with org creation. If it fails, an
+	// org with no roles would be left behind and unadministrable, so we
+	// compensate by deleting the org (its roles cascade-delete) before
+	// returning the error. Best-effort: the delete error is not surfaced.
 	if err := s.roles.SeedDefaults(ctx, o.ID); err != nil {
+		_ = s.store.DeleteOrg(ctx, o.ID)
 		return Organization{}, fmt.Errorf("seed default roles: %w", err)
 	}
 	return o, nil

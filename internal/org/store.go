@@ -58,6 +58,14 @@ func (s *Store) GetOrg(ctx context.Context, id string) (Organization, error) {
 	return Organization{ID: row.ID.String(), Name: row.Name, ParentID: parentIDString(row.ParentID)}, nil
 }
 
+func (s *Store) DeleteOrg(ctx context.Context, id string) error {
+	uid, err := parseUUID(id)
+	if err != nil {
+		return ErrNotFound
+	}
+	return s.q.DeleteOrg(ctx, uid)
+}
+
 func (s *Store) CreateTeam(ctx context.Context, orgID, name string) (Team, error) {
 	uid, err := parseUUID(orgID)
 	if err != nil {

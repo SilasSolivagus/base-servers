@@ -74,6 +74,15 @@ func (q *Queries) CreateTeam(ctx context.Context, arg CreateTeamParams) (Team, e
 	return i, err
 }
 
+const deleteOrg = `-- name: DeleteOrg :exec
+DELETE FROM organizations WHERE id = $1
+`
+
+func (q *Queries) DeleteOrg(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteOrg, id)
+	return err
+}
+
 const getOrg = `-- name: GetOrg :one
 SELECT id, name, COALESCE(parent_id::text, '') AS parent_id FROM organizations WHERE id = $1
 `
