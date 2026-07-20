@@ -18,6 +18,10 @@ type Config struct {
 type Adapter struct {
 	cli *gocloak.GoCloak
 	cfg Config
+	// unmanagedAttrsEnsured is set true after ensureUnmanagedUserAttributes
+	// succeeds once, so subsequent CreatePrincipal(Human) calls skip the
+	// extra GET/PUT round trip. Left false on failure so it retries.
+	unmanagedAttrsEnsured bool
 }
 
 func New(cfg Config) (*Adapter, error) {
@@ -38,18 +42,34 @@ func (a *Adapter) login(ctx context.Context) (*gocloak.JWT, error) {
 // gocloak/v13.9.0 未封装 users/profile 接口,这里直接复用其已导出的
 // GetRequestWithBearerAuth 发原始请求。
 func (a *Adapter) ensureUnmanagedUserAttributes(ctx context.Context, token string) error {
+	if a.unmanagedAttrsEnsured {
+		return nil
+	}
 	url := a.cfg.BaseURL + "/admin/realms/" + a.cfg.Realm + "/users/profile"
 	var profile map[string]interface{}
-	if _, err := a.cli.GetRequestWithBearerAuth(ctx, token).SetResult(&profile).Get(url); err != nil {
+	getResp, err := a.cli.GetRequestWithBearerAuth(ctx, token).SetResult(&profile).Get(url)
+	if err != nil {
 		return fmt.Errorf("get user profile config: %w", err)
 	}
+	if getResp.IsError() {
+		return fmt.Errorf("get user profile config: status %d: %s", getResp.StatusCode(), getResp.String())
+	}
+	if profile == nil {
+		profile = map[string]interface{}{}
+	}
 	if profile["unmanagedAttributePolicy"] == "ENABLED" {
+		a.unmanagedAttrsEnsured = true
 		return nil
 	}
 	profile["unmanagedAttributePolicy"] = "ENABLED"
-	if _, err := a.cli.GetRequestWithBearerAuth(ctx, token).SetBody(profile).Put(url); err != nil {
+	putResp, err := a.cli.GetRequestWithBearerAuth(ctx, token).SetBody(profile).Put(url)
+	if err != nil {
 		return fmt.Errorf("update user profile config: %w", err)
 	}
+	if putResp.IsError() {
+		return fmt.Errorf("update user profile config: status %d: %s", putResp.StatusCode(), putResp.String())
+	}
+	a.unmanagedAttrsEnsured = true
 	return nil
 }
 
