@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
@@ -35,6 +36,34 @@ func StartPostgres(t *testing.T) *pgxpool.Pool {
 	t.Cleanup(pool.Close)
 	applyMigrations(t, pool)
 	return pool
+}
+
+// StartKeycloak 起一个真 Keycloak(master realm),返回 baseURL/realm/admin 账号密码。
+// 用 master realm 简化 Phase 1;Phase 4 换成专用 realm 引导。
+func StartKeycloak(t *testing.T) (baseURL, realm, user, pass string) {
+	t.Helper()
+	ctx := context.Background()
+	req := testcontainers.ContainerRequest{
+		Image:        "quay.io/keycloak/keycloak:26.4",
+		Cmd:          []string{"start-dev"},
+		ExposedPorts: []string{"8080/tcp"},
+		Env: map[string]string{
+			"KC_BOOTSTRAP_ADMIN_USERNAME": "admin",
+			"KC_BOOTSTRAP_ADMIN_PASSWORD": "admin",
+			"KC_FEATURES":                 "token-exchange,dpop",
+		},
+		WaitingFor: wait.ForHTTP("/realms/master").WithPort("8080/tcp").WithStartupTimeout(180 * time.Second),
+	}
+	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req, Started: true,
+	})
+	if err != nil {
+		t.Fatalf("start keycloak: %v", err)
+	}
+	t.Cleanup(func() { _ = c.Terminate(ctx) })
+	host, _ := c.Host(ctx)
+	port, _ := c.MappedPort(ctx, "8080/tcp")
+	return "http://" + host + ":" + port.Port(), "master", "admin", "admin"
 }
 
 func applyMigrations(t *testing.T, pool *pgxpool.Pool) {
