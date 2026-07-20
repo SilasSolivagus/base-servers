@@ -16,3 +16,8 @@ sql:
         package: db
         out: internal/org/db
         sql_package: pgx/v5
+  - engine: postgresql
+    schema: db/migrations
+    queries: db/query/role.sql
+    gen:
+      go: { package: db, out: internal/role/db, sql_package: pgx/v5 }
