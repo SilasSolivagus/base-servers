@@ -2,6 +2,12 @@ package authz
 
 import "context"
 
+// Checker is satisfied by *Service; lets other packages depend on the
+// interface rather than the concrete authz store wiring.
+type Checker interface {
+	Check(ctx context.Context, subject, action string, res Resource) (bool, error)
+}
+
 type Service struct{ store *Store }
 
 func NewService(store *Store) *Service { return &Service{store: store} }
