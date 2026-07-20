@@ -16,6 +16,13 @@ import (
 // header via go-jose's EmbedJWK signer option.
 func buildDPoPProof(t *testing.T, key *ecdsa.PrivateKey, htm, htu, ath string) string {
 	t.Helper()
+	return buildDPoPProofAt(t, key, htm, htu, ath, time.Now())
+}
+
+// buildDPoPProofAt is like buildDPoPProof but lets the caller control the
+// proof's iat, for testing freshness enforcement.
+func buildDPoPProofAt(t *testing.T, key *ecdsa.PrivateKey, htm, htu, ath string, iat time.Time) string {
+	t.Helper()
 	signer, err := jose.NewSigner(
 		jose.SigningKey{Algorithm: jose.ES256, Key: key},
 		(&jose.SignerOptions{EmbedJWK: true}).WithType("dpop+jwt"),
@@ -26,7 +33,7 @@ func buildDPoPProof(t *testing.T, key *ecdsa.PrivateKey, htm, htu, ath string) s
 	payload, err := json.Marshal(dpopPayload{
 		Htm: htm,
 		Htu: htu,
-		Iat: time.Now().Unix(),
+		Iat: iat.Unix(),
 		Jti: "test-jti",
 		Ath: ath,
 	})
@@ -98,5 +105,22 @@ func TestVerifyDPoPDeniesWrongHTU(t *testing.T) {
 	err = VerifyDPoP(proof, jkt, "POST", "https://api.example/other", "abc")
 	if err == nil {
 		t.Fatal("expected htu mismatch error, got nil")
+	}
+}
+
+func TestVerifyDPoPRejectsStaleProof(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof := buildDPoPProofAt(t, key, "POST", "https://api.example/x", "abc", time.Now().Add(-10*time.Minute))
+	jkt, err := JKTFromProof(proof)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = VerifyDPoP(proof, jkt, "POST", "https://api.example/x", "abc")
+	if err == nil {
+		t.Fatal("expected stale proof error, got nil")
 	}
 }

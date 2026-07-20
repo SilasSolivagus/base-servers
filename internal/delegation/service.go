@@ -11,6 +11,9 @@ import (
 
 var ErrInvalidInput = errors.New("invalid delegation input")
 
+// MaxTTLSeconds is the maximum lifetime (24h) allowed for an issued delegation.
+const MaxTTLSeconds = 86400
+
 type PrincipalTyper interface {
 	TypeOf(ctx context.Context, id string) (engine.PrincipalType, error)
 }
@@ -42,6 +45,9 @@ func (s *Service) Issue(ctx context.Context, in IssueInput) (string, string, err
 	}
 	if dt == engine.Agent {
 		return "", "", fmt.Errorf("%w: delegator must not be an agent (v1)", ErrInvalidInput)
+	}
+	if in.TTLSeconds > MaxTTLSeconds {
+		return "", "", fmt.Errorf("%w: ttl_seconds exceeds max %d", ErrInvalidInput, MaxTTLSeconds)
 	}
 	exp := time.Now().Add(time.Duration(in.TTLSeconds) * time.Second)
 	id, err := s.store.Insert(ctx, Delegation{

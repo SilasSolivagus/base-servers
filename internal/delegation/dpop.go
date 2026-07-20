@@ -7,9 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/go-jose/go-jose/v4"
 )
+
+// dpopFreshnessWindow is the maximum allowed clock skew between the DPoP
+// proof's iat and the verifier's current time, in either direction.
+const dpopFreshnessWindow = 60 * time.Second
 
 // dpopPayload is the claim set of a DPoP proof JWT (RFC 9449 section 4.2).
 type dpopPayload struct {
@@ -86,7 +91,12 @@ func JKTFromProof(proofJWT string) (string, error) {
 
 // VerifyDPoP verifies a DPoP proof JWT (RFC 9449) presented alongside a
 // delegation token bound to expectedJkt. It fails closed: any parse,
-// signature, jkt, htm, htu, or ath mismatch returns a non-nil error.
+// signature, jkt, htm, htu, ath mismatch, or stale/missing iat returns a
+// non-nil error. This proves the caller holds the private key bound to the
+// token (preventing key-swap) and that the proof is fresh (within a 60s
+// window), but it does NOT prevent replay of a valid proof within that
+// window - that requires caching seen jti values, which is deferred to
+// Phase 4.
 //
 //   - proofJWT: the compact DPoP proof JWS from the "DPoP" request header.
 //   - expectedJkt: the cnf.jkt bound into the delegation token at issue time.
@@ -114,6 +124,16 @@ func VerifyDPoP(proofJWT, expectedJkt, htm, htu, ath string) error {
 	}
 	if ath != "" && payload.Ath != ath {
 		return errors.New("dpop: ath mismatch")
+	}
+	if payload.Iat == 0 {
+		return errors.New("dpop: missing iat")
+	}
+	age := time.Since(time.Unix(payload.Iat, 0))
+	if age < 0 {
+		age = -age
+	}
+	if age > dpopFreshnessWindow {
+		return errors.New("dpop: proof is not fresh")
 	}
 	return nil
 }

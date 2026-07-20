@@ -2,6 +2,7 @@ package delegation
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/SilasSolivagus/base-servers/internal/engine"
@@ -45,5 +46,18 @@ func TestIssueOKAndRevoke(t *testing.T) {
 	}
 	if err := svc.Revoke(context.Background(), id); err != nil {
 		t.Fatalf("revoke: %v", err)
+	}
+}
+
+func TestIssueRejectsExcessiveTTL(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	o, _ := org.NewStore(pool).CreateOrg(context.Background(), "Acme")
+	sig, _ := NewSigner("base-servers")
+	svc := NewService(NewStore(pool), sig, fakeTyper{"u1": engine.Human, "ag1": engine.Agent})
+	_, _, err := svc.Issue(context.Background(), IssueInput{
+		AgentID: "ag1", DelegatorID: "u1", OrgID: o.ID, Scope: []string{"doc.edit"}, TTLSeconds: MaxTTLSeconds + 1,
+	})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
 	}
 }
