@@ -72,11 +72,14 @@ func (q *Queries) InsertDelegation(ctx context.Context, arg InsertDelegationPara
 	return id, err
 }
 
-const revokeDelegation = `-- name: RevokeDelegation :exec
+const revokeDelegation = `-- name: RevokeDelegation :execrows
 UPDATE delegations SET revoked = true WHERE id = $1
 `
 
-func (q *Queries) RevokeDelegation(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, revokeDelegation, id)
-	return err
+func (q *Queries) RevokeDelegation(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeDelegation, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

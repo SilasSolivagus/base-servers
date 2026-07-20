@@ -66,5 +66,12 @@ func (s *Store) Revoke(ctx context.Context, id string) error {
 	if err != nil {
 		return ErrNotFound
 	}
-	return s.q.RevokeDelegation(ctx, uid)
+	n, err := s.q.RevokeDelegation(ctx, uid)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

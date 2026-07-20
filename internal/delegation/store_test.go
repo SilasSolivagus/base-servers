@@ -2,6 +2,7 @@ package delegation
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -31,5 +32,15 @@ func TestStoreInsertGetRevoke(t *testing.T) {
 	d2, _ := s.Get(ctx, id)
 	if !d2.Revoked {
 		t.Fatal("expected revoked=true after Revoke")
+	}
+}
+
+func TestStoreRevokeNotFound(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	s := NewStore(pool)
+	ctx := context.Background()
+	err := s.Revoke(ctx, "11111111-1111-1111-1111-111111111111")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
