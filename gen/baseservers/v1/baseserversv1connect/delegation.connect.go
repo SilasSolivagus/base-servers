@@ -38,12 +38,16 @@ const (
 	// DelegationServiceRevokeProcedure is the fully-qualified name of the DelegationService's Revoke
 	// RPC.
 	DelegationServiceRevokeProcedure = "/baseservers.v1.DelegationService/Revoke"
+	// DelegationServiceCheckDelegatedProcedure is the fully-qualified name of the DelegationService's
+	// CheckDelegated RPC.
+	DelegationServiceCheckDelegatedProcedure = "/baseservers.v1.DelegationService/CheckDelegated"
 )
 
 // DelegationServiceClient is a client for the baseservers.v1.DelegationService service.
 type DelegationServiceClient interface {
 	Issue(context.Context, *connect.Request[v1.IssueRequest]) (*connect.Response[v1.IssueResponse], error)
 	Revoke(context.Context, *connect.Request[v1.RevokeRequest]) (*connect.Response[v1.RevokeResponse], error)
+	CheckDelegated(context.Context, *connect.Request[v1.CheckDelegatedRequest]) (*connect.Response[v1.CheckDelegatedResponse], error)
 }
 
 // NewDelegationServiceClient constructs a client for the baseservers.v1.DelegationService service.
@@ -69,13 +73,20 @@ func NewDelegationServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(delegationServiceMethods.ByName("Revoke")),
 			connect.WithClientOptions(opts...),
 		),
+		checkDelegated: connect.NewClient[v1.CheckDelegatedRequest, v1.CheckDelegatedResponse](
+			httpClient,
+			baseURL+DelegationServiceCheckDelegatedProcedure,
+			connect.WithSchema(delegationServiceMethods.ByName("CheckDelegated")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // delegationServiceClient implements DelegationServiceClient.
 type delegationServiceClient struct {
-	issue  *connect.Client[v1.IssueRequest, v1.IssueResponse]
-	revoke *connect.Client[v1.RevokeRequest, v1.RevokeResponse]
+	issue          *connect.Client[v1.IssueRequest, v1.IssueResponse]
+	revoke         *connect.Client[v1.RevokeRequest, v1.RevokeResponse]
+	checkDelegated *connect.Client[v1.CheckDelegatedRequest, v1.CheckDelegatedResponse]
 }
 
 // Issue calls baseservers.v1.DelegationService.Issue.
@@ -88,10 +99,16 @@ func (c *delegationServiceClient) Revoke(ctx context.Context, req *connect.Reque
 	return c.revoke.CallUnary(ctx, req)
 }
 
+// CheckDelegated calls baseservers.v1.DelegationService.CheckDelegated.
+func (c *delegationServiceClient) CheckDelegated(ctx context.Context, req *connect.Request[v1.CheckDelegatedRequest]) (*connect.Response[v1.CheckDelegatedResponse], error) {
+	return c.checkDelegated.CallUnary(ctx, req)
+}
+
 // DelegationServiceHandler is an implementation of the baseservers.v1.DelegationService service.
 type DelegationServiceHandler interface {
 	Issue(context.Context, *connect.Request[v1.IssueRequest]) (*connect.Response[v1.IssueResponse], error)
 	Revoke(context.Context, *connect.Request[v1.RevokeRequest]) (*connect.Response[v1.RevokeResponse], error)
+	CheckDelegated(context.Context, *connect.Request[v1.CheckDelegatedRequest]) (*connect.Response[v1.CheckDelegatedResponse], error)
 }
 
 // NewDelegationServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -113,12 +130,20 @@ func NewDelegationServiceHandler(svc DelegationServiceHandler, opts ...connect.H
 		connect.WithSchema(delegationServiceMethods.ByName("Revoke")),
 		connect.WithHandlerOptions(opts...),
 	)
+	delegationServiceCheckDelegatedHandler := connect.NewUnaryHandler(
+		DelegationServiceCheckDelegatedProcedure,
+		svc.CheckDelegated,
+		connect.WithSchema(delegationServiceMethods.ByName("CheckDelegated")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/baseservers.v1.DelegationService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DelegationServiceIssueProcedure:
 			delegationServiceIssueHandler.ServeHTTP(w, r)
 		case DelegationServiceRevokeProcedure:
 			delegationServiceRevokeHandler.ServeHTTP(w, r)
+		case DelegationServiceCheckDelegatedProcedure:
+			delegationServiceCheckDelegatedHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -134,4 +159,8 @@ func (UnimplementedDelegationServiceHandler) Issue(context.Context, *connect.Req
 
 func (UnimplementedDelegationServiceHandler) Revoke(context.Context, *connect.Request[v1.RevokeRequest]) (*connect.Response[v1.RevokeResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("baseservers.v1.DelegationService.Revoke is not implemented"))
+}
+
+func (UnimplementedDelegationServiceHandler) CheckDelegated(context.Context, *connect.Request[v1.CheckDelegatedRequest]) (*connect.Response[v1.CheckDelegatedResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("baseservers.v1.DelegationService.CheckDelegated is not implemented"))
 }

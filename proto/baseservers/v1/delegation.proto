@@ -14,7 +14,21 @@ message IssueResponse { string token = 1; string delegation_id = 2; }
 message RevokeRequest { string delegation_id = 1; }
 message RevokeResponse {}
 
+message CheckDelegatedRequest {
+  string token = 1;
+  string action = 2;
+  string resource_type = 3;
+  string resource_id = 4;
+  string org_id = 5;
+  string team_id = 6;
+  string dpop_proof = 7;  // placeholder for Task 6 DPoP, unused
+  string http_method = 8; // placeholder for Task 6 DPoP, unused
+  string http_uri = 9;    // placeholder for Task 6 DPoP, unused
+}
+message CheckDelegatedResponse { bool allowed = 1; }
+
 service DelegationService {
   rpc Issue(IssueRequest) returns (IssueResponse);
   rpc Revoke(RevokeRequest) returns (RevokeResponse);
+  rpc CheckDelegated(CheckDelegatedRequest) returns (CheckDelegatedResponse);
 }

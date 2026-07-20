@@ -229,6 +229,158 @@ func (*RevokeResponse) Descriptor() ([]byte, []int) {
 	return file_baseservers_v1_delegation_proto_rawDescGZIP(), []int{3}
 }
 
+type CheckDelegatedRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Token         string                 `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
+	Action        string                 `protobuf:"bytes,2,opt,name=action,proto3" json:"action,omitempty"`
+	ResourceType  string                 `protobuf:"bytes,3,opt,name=resource_type,json=resourceType,proto3" json:"resource_type,omitempty"`
+	ResourceId    string                 `protobuf:"bytes,4,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
+	OrgId         string                 `protobuf:"bytes,5,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	TeamId        string                 `protobuf:"bytes,6,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	DpopProof     string                 `protobuf:"bytes,7,opt,name=dpop_proof,json=dpopProof,proto3" json:"dpop_proof,omitempty"`    // placeholder for Task 6 DPoP, unused
+	HttpMethod    string                 `protobuf:"bytes,8,opt,name=http_method,json=httpMethod,proto3" json:"http_method,omitempty"` // placeholder for Task 6 DPoP, unused
+	HttpUri       string                 `protobuf:"bytes,9,opt,name=http_uri,json=httpUri,proto3" json:"http_uri,omitempty"`          // placeholder for Task 6 DPoP, unused
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckDelegatedRequest) Reset() {
+	*x = CheckDelegatedRequest{}
+	mi := &file_baseservers_v1_delegation_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckDelegatedRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckDelegatedRequest) ProtoMessage() {}
+
+func (x *CheckDelegatedRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_baseservers_v1_delegation_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckDelegatedRequest.ProtoReflect.Descriptor instead.
+func (*CheckDelegatedRequest) Descriptor() ([]byte, []int) {
+	return file_baseservers_v1_delegation_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *CheckDelegatedRequest) GetToken() string {
+	if x != nil {
+		return x.Token
+	}
+	return ""
+}
+
+func (x *CheckDelegatedRequest) GetAction() string {
+	if x != nil {
+		return x.Action
+	}
+	return ""
+}
+
+func (x *CheckDelegatedRequest) GetResourceType() string {
+	if x != nil {
+		return x.ResourceType
+	}
+	return ""
+}
+
+func (x *CheckDelegatedRequest) GetResourceId() string {
+	if x != nil {
+		return x.ResourceId
+	}
+	return ""
+}
+
+func (x *CheckDelegatedRequest) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+func (x *CheckDelegatedRequest) GetTeamId() string {
+	if x != nil {
+		return x.TeamId
+	}
+	return ""
+}
+
+func (x *CheckDelegatedRequest) GetDpopProof() string {
+	if x != nil {
+		return x.DpopProof
+	}
+	return ""
+}
+
+func (x *CheckDelegatedRequest) GetHttpMethod() string {
+	if x != nil {
+		return x.HttpMethod
+	}
+	return ""
+}
+
+func (x *CheckDelegatedRequest) GetHttpUri() string {
+	if x != nil {
+		return x.HttpUri
+	}
+	return ""
+}
+
+type CheckDelegatedResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Allowed       bool                   `protobuf:"varint,1,opt,name=allowed,proto3" json:"allowed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckDelegatedResponse) Reset() {
+	*x = CheckDelegatedResponse{}
+	mi := &file_baseservers_v1_delegation_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckDelegatedResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckDelegatedResponse) ProtoMessage() {}
+
+func (x *CheckDelegatedResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_baseservers_v1_delegation_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckDelegatedResponse.ProtoReflect.Descriptor instead.
+func (*CheckDelegatedResponse) Descriptor() ([]byte, []int) {
+	return file_baseservers_v1_delegation_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *CheckDelegatedResponse) GetAllowed() bool {
+	if x != nil {
+		return x.Allowed
+	}
+	return false
+}
+
 var File_baseservers_v1_delegation_proto protoreflect.FileDescriptor
 
 const file_baseservers_v1_delegation_proto_rawDesc = "" +
@@ -246,10 +398,26 @@ const file_baseservers_v1_delegation_proto_rawDesc = "" +
 	"\rdelegation_id\x18\x02 \x01(\tR\fdelegationId\"4\n" +
 	"\rRevokeRequest\x12#\n" +
 	"\rdelegation_id\x18\x01 \x01(\tR\fdelegationId\"\x10\n" +
-	"\x0eRevokeResponse2\xa2\x01\n" +
+	"\x0eRevokeResponse\"\x96\x02\n" +
+	"\x15CheckDelegatedRequest\x12\x14\n" +
+	"\x05token\x18\x01 \x01(\tR\x05token\x12\x16\n" +
+	"\x06action\x18\x02 \x01(\tR\x06action\x12#\n" +
+	"\rresource_type\x18\x03 \x01(\tR\fresourceType\x12\x1f\n" +
+	"\vresource_id\x18\x04 \x01(\tR\n" +
+	"resourceId\x12\x15\n" +
+	"\x06org_id\x18\x05 \x01(\tR\x05orgId\x12\x17\n" +
+	"\ateam_id\x18\x06 \x01(\tR\x06teamId\x12\x1d\n" +
+	"\n" +
+	"dpop_proof\x18\a \x01(\tR\tdpopProof\x12\x1f\n" +
+	"\vhttp_method\x18\b \x01(\tR\n" +
+	"httpMethod\x12\x19\n" +
+	"\bhttp_uri\x18\t \x01(\tR\ahttpUri\"2\n" +
+	"\x16CheckDelegatedResponse\x12\x18\n" +
+	"\aallowed\x18\x01 \x01(\bR\aallowed2\x83\x02\n" +
 	"\x11DelegationService\x12D\n" +
 	"\x05Issue\x12\x1c.baseservers.v1.IssueRequest\x1a\x1d.baseservers.v1.IssueResponse\x12G\n" +
-	"\x06Revoke\x12\x1d.baseservers.v1.RevokeRequest\x1a\x1e.baseservers.v1.RevokeResponseBIZGgithub.com/SilasSolivagus/base-servers/gen/baseservers/v1;baseserversv1b\x06proto3"
+	"\x06Revoke\x12\x1d.baseservers.v1.RevokeRequest\x1a\x1e.baseservers.v1.RevokeResponse\x12_\n" +
+	"\x0eCheckDelegated\x12%.baseservers.v1.CheckDelegatedRequest\x1a&.baseservers.v1.CheckDelegatedResponseBIZGgithub.com/SilasSolivagus/base-servers/gen/baseservers/v1;baseserversv1b\x06proto3"
 
 var (
 	file_baseservers_v1_delegation_proto_rawDescOnce sync.Once
@@ -263,20 +431,24 @@ func file_baseservers_v1_delegation_proto_rawDescGZIP() []byte {
 	return file_baseservers_v1_delegation_proto_rawDescData
 }
 
-var file_baseservers_v1_delegation_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_baseservers_v1_delegation_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_baseservers_v1_delegation_proto_goTypes = []any{
-	(*IssueRequest)(nil),   // 0: baseservers.v1.IssueRequest
-	(*IssueResponse)(nil),  // 1: baseservers.v1.IssueResponse
-	(*RevokeRequest)(nil),  // 2: baseservers.v1.RevokeRequest
-	(*RevokeResponse)(nil), // 3: baseservers.v1.RevokeResponse
+	(*IssueRequest)(nil),           // 0: baseservers.v1.IssueRequest
+	(*IssueResponse)(nil),          // 1: baseservers.v1.IssueResponse
+	(*RevokeRequest)(nil),          // 2: baseservers.v1.RevokeRequest
+	(*RevokeResponse)(nil),         // 3: baseservers.v1.RevokeResponse
+	(*CheckDelegatedRequest)(nil),  // 4: baseservers.v1.CheckDelegatedRequest
+	(*CheckDelegatedResponse)(nil), // 5: baseservers.v1.CheckDelegatedResponse
 }
 var file_baseservers_v1_delegation_proto_depIdxs = []int32{
 	0, // 0: baseservers.v1.DelegationService.Issue:input_type -> baseservers.v1.IssueRequest
 	2, // 1: baseservers.v1.DelegationService.Revoke:input_type -> baseservers.v1.RevokeRequest
-	1, // 2: baseservers.v1.DelegationService.Issue:output_type -> baseservers.v1.IssueResponse
-	3, // 3: baseservers.v1.DelegationService.Revoke:output_type -> baseservers.v1.RevokeResponse
-	2, // [2:4] is the sub-list for method output_type
-	0, // [0:2] is the sub-list for method input_type
+	4, // 2: baseservers.v1.DelegationService.CheckDelegated:input_type -> baseservers.v1.CheckDelegatedRequest
+	1, // 3: baseservers.v1.DelegationService.Issue:output_type -> baseservers.v1.IssueResponse
+	3, // 4: baseservers.v1.DelegationService.Revoke:output_type -> baseservers.v1.RevokeResponse
+	5, // 5: baseservers.v1.DelegationService.CheckDelegated:output_type -> baseservers.v1.CheckDelegatedResponse
+	3, // [3:6] is the sub-list for method output_type
+	0, // [0:3] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -293,7 +465,7 @@ func file_baseservers_v1_delegation_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_baseservers_v1_delegation_proto_rawDesc), len(file_baseservers_v1_delegation_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

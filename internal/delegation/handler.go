@@ -9,11 +9,15 @@ import (
 
 	v1 "github.com/SilasSolivagus/base-servers/gen/baseservers/v1"
 	"github.com/SilasSolivagus/base-servers/gen/baseservers/v1/baseserversv1connect"
+	"github.com/SilasSolivagus/base-servers/internal/authz"
 )
 
-type Handler struct{ svc *Service }
+type Handler struct {
+	svc     *Service
+	checker *Checker
+}
 
-func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
+func NewHandler(svc *Service, checker *Checker) *Handler { return &Handler{svc: svc, checker: checker} }
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	path, hdl := baseserversv1connect.NewDelegationServiceHandler(h)
@@ -46,4 +50,15 @@ func (h *Handler) Revoke(ctx context.Context, req *connect.Request[v1.RevokeRequ
 		return nil, code(err)
 	}
 	return connect.NewResponse(&v1.RevokeResponse{}), nil
+}
+
+// CheckDelegated: http_method/http_uri/dpop_proof are Task 6 DPoP placeholders, unused here.
+func (h *Handler) CheckDelegated(ctx context.Context, req *connect.Request[v1.CheckDelegatedRequest]) (*connect.Response[v1.CheckDelegatedResponse], error) {
+	allowed, err := h.checker.CheckDelegated(ctx, req.Msg.Token, req.Msg.Action, authz.Resource{
+		Type: req.Msg.ResourceType, ID: req.Msg.ResourceId, OrgID: req.Msg.OrgId, TeamID: req.Msg.TeamId,
+	})
+	if err != nil {
+		return nil, code(err)
+	}
+	return connect.NewResponse(&v1.CheckDelegatedResponse{Allowed: allowed}), nil
 }
