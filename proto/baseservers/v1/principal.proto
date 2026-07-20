@@ -1,0 +1,38 @@
+syntax = "proto3";
+package baseservers.v1;
+option go_package = "github.com/SilasSolivagus/base-servers/gen/baseservers/v1;baseserversv1";
+
+enum PrincipalType {
+  PRINCIPAL_TYPE_UNSPECIFIED = 0;
+  PRINCIPAL_TYPE_HUMAN = 1;
+  PRINCIPAL_TYPE_SERVICE = 2;
+  PRINCIPAL_TYPE_AGENT = 3;
+}
+
+message Principal {
+  string id = 1;
+  PrincipalType type = 2;
+  string display_name = 3;
+  // agent-only 字段,其它类型留空
+  string owner_principal_id = 4;
+  repeated string capabilities = 5;
+  string purpose = 6;
+  string on_behalf_of = 7;
+}
+
+message CreatePrincipalRequest {
+  PrincipalType type = 1;
+  string display_name = 2;
+  string owner_principal_id = 3;
+  repeated string capabilities = 4;
+  string purpose = 5;
+}
+message CreatePrincipalResponse { Principal principal = 1; }
+
+message GetPrincipalRequest { string id = 1; }
+message GetPrincipalResponse { Principal principal = 1; }
+
+service PrincipalService {
+  rpc CreatePrincipal(CreatePrincipalRequest) returns (CreatePrincipalResponse);
+  rpc GetPrincipal(GetPrincipalRequest) returns (GetPrincipalResponse);
+}
