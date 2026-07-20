@@ -1,0 +1,20 @@
+syntax = "proto3";
+package baseservers.v1;
+option go_package = "github.com/SilasSolivagus/base-servers/gen/baseservers/v1;baseserversv1";
+
+message IssueRequest {
+  string agent_id = 1;
+  string delegator_id = 2;
+  string org_id = 3;
+  repeated string scope = 4;
+  int64 ttl_seconds = 5;
+}
+message IssueResponse { string token = 1; string delegation_id = 2; }
+
+message RevokeRequest { string delegation_id = 1; }
+message RevokeResponse {}
+
+service DelegationService {
+  rpc Issue(IssueRequest) returns (IssueResponse);
+  rpc Revoke(RevokeRequest) returns (RevokeResponse);
+}
