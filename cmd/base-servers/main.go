@@ -6,9 +6,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/SilasSolivagus/base-servers/internal/authz"
 	"github.com/SilasSolivagus/base-servers/internal/config"
 	"github.com/SilasSolivagus/base-servers/internal/engine/keycloak"
+	"github.com/SilasSolivagus/base-servers/internal/org"
 	"github.com/SilasSolivagus/base-servers/internal/principal"
+	"github.com/SilasSolivagus/base-servers/internal/role"
 	"github.com/SilasSolivagus/base-servers/internal/server"
 )
 
@@ -32,7 +35,17 @@ func main() {
 	}
 
 	svc := principal.NewService(eng, principal.NewStore(pool))
-	srv := server.New(cfg, principal.NewHandler(svc))
+
+	orgSvc := org.NewService(org.NewStore(pool), role.NewStore(pool))
+	roleSvc := role.NewService(role.NewStore(pool))
+	authzStore := authz.NewStore(pool)
+
+	srv := server.New(cfg,
+		principal.NewHandler(svc),
+		org.NewHandler(orgSvc),
+		role.NewHandler(roleSvc),
+		authz.NewHandler(authz.NewService(authzStore), authzStore),
+	)
 	log.Printf("base-servers listening on %s", cfg.HTTPAddr)
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("serve: %v", err)
