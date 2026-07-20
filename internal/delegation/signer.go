@@ -87,6 +87,9 @@ func (s *Signer) Verify(token string) (Claims, error) {
 	if now.Unix() >= tc.Exp {
 		return Claims{}, fmt.Errorf("delegation token expired")
 	}
+	if tc.Iss != s.issuer {
+		return Claims{}, fmt.Errorf("unexpected issuer %q", tc.Iss)
+	}
 	out := Claims{
 		Subject: tc.Sub, Delegator: tc.Act.Sub, DelegationID: tc.DID, Scope: tc.Scope,
 		OrgID: tc.Org, IssuedAt: time.Unix(tc.Iat, 0), ExpiresAt: time.Unix(tc.Exp, 0),
