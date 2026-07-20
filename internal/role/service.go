@@ -26,5 +26,27 @@ func (s *Service) AssignRole(ctx context.Context, principalID, roleID, scopeType
 	if scopeType != "org" && scopeType != "team" {
 		return fmt.Errorf("%w: scope_type must be org or team", ErrInvalidInput)
 	}
+
+	roleOrg, err := s.store.RoleOrg(ctx, roleID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("%w: role or scope not found", ErrInvalidInput)
+		}
+		return err
+	}
+	scopeOrg := scopeID
+	if scopeType == "team" {
+		scopeOrg, err = s.store.TeamOrg(ctx, scopeID)
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return fmt.Errorf("%w: role or scope not found", ErrInvalidInput)
+			}
+			return err
+		}
+	}
+	if scopeOrg != roleOrg {
+		return fmt.Errorf("%w: role's org does not match scope's org", ErrInvalidInput)
+	}
+
 	return s.store.AssignRole(ctx, principalID, roleID, scopeType, scopeID)
 }

@@ -56,3 +56,25 @@ func (q *Queries) CreateRole(ctx context.Context, arg CreateRoleParams) (Role, e
 	)
 	return i, err
 }
+
+const getRoleOrg = `-- name: GetRoleOrg :one
+SELECT org_id FROM roles WHERE id = $1
+`
+
+func (q *Queries) GetRoleOrg(ctx context.Context, id pgtype.UUID) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, getRoleOrg, id)
+	var org_id pgtype.UUID
+	err := row.Scan(&org_id)
+	return org_id, err
+}
+
+const getTeamOrg = `-- name: GetTeamOrg :one
+SELECT org_id FROM teams WHERE id = $1
+`
+
+func (q *Queries) GetTeamOrg(ctx context.Context, id pgtype.UUID) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, getTeamOrg, id)
+	var org_id pgtype.UUID
+	err := row.Scan(&org_id)
+	return org_id, err
+}
