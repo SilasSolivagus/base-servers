@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 
 	"github.com/Nerzal/gocloak/v13"
 
@@ -18,6 +19,9 @@ type Config struct {
 type Adapter struct {
 	cli *gocloak.GoCloak
 	cfg Config
+	// unmanagedAttrsMu guards unmanagedAttrsEnsured, which is shared across
+	// concurrent CreatePrincipal(Human) calls (e.g. from the HTTP server).
+	unmanagedAttrsMu sync.Mutex
 	// unmanagedAttrsEnsured is set true after ensureUnmanagedUserAttributes
 	// succeeds once, so subsequent CreatePrincipal(Human) calls skip the
 	// extra GET/PUT round trip. Left false on failure so it retries.
@@ -42,6 +46,8 @@ func (a *Adapter) login(ctx context.Context) (*gocloak.JWT, error) {
 // gocloak/v13.9.0 未封装 users/profile 接口,这里直接复用其已导出的
 // GetRequestWithBearerAuth 发原始请求。
 func (a *Adapter) ensureUnmanagedUserAttributes(ctx context.Context, token string) error {
+	a.unmanagedAttrsMu.Lock()
+	defer a.unmanagedAttrsMu.Unlock()
 	if a.unmanagedAttrsEnsured {
 		return nil
 	}
