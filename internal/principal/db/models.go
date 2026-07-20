@@ -8,6 +8,25 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Membership struct {
+	PrincipalID string
+	OrgID       pgtype.UUID
+}
+
+type Organization struct {
+	ID        pgtype.UUID
+	Name      string
+	ParentID  pgtype.UUID
+	CreatedAt pgtype.Timestamptz
+}
+
+type Ownership struct {
+	ResourceType     string
+	ResourceID       string
+	OwnerPrincipalID string
+	OrgID            pgtype.UUID
+}
+
 type Principal struct {
 	ID               string
 	Type             string
@@ -17,4 +36,29 @@ type Principal struct {
 	Purpose          string
 	OnBehalfOf       string
 	CreatedAt        pgtype.Timestamptz
+}
+
+type Role struct {
+	ID          pgtype.UUID
+	OrgID       pgtype.UUID
+	Name        string
+	Permissions []string
+}
+
+type RoleAssignment struct {
+	PrincipalID string
+	RoleID      pgtype.UUID
+	ScopeType   string
+	ScopeID     pgtype.UUID
+}
+
+type Team struct {
+	ID    pgtype.UUID
+	OrgID pgtype.UUID
+	Name  string
+}
+
+type TeamMembership struct {
+	PrincipalID string
+	TeamID      pgtype.UUID
 }
