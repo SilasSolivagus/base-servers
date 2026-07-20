@@ -8,6 +8,7 @@ import (
 
 	"github.com/SilasSolivagus/base-servers/internal/authz"
 	"github.com/SilasSolivagus/base-servers/internal/config"
+	"github.com/SilasSolivagus/base-servers/internal/delegation"
 	"github.com/SilasSolivagus/base-servers/internal/engine/keycloak"
 	"github.com/SilasSolivagus/base-servers/internal/org"
 	"github.com/SilasSolivagus/base-servers/internal/principal"
@@ -39,12 +40,23 @@ func main() {
 	orgSvc := org.NewService(org.NewStore(pool), role.NewStore(pool))
 	roleSvc := role.NewService(role.NewStore(pool))
 	authzStore := authz.NewStore(pool)
+	authzSvc := authz.NewService(authzStore)
+
+	signer, err := delegation.NewSigner(cfg.DelegationIssuer)
+	if err != nil {
+		log.Fatalf("delegation signer: %v", err)
+	}
+	delStore := delegation.NewStore(pool)
+	delSvc := delegation.NewService(delStore, signer, svc)
+	delChecker := delegation.NewChecker(delStore, signer, authzSvc)
 
 	srv := server.New(cfg,
 		principal.NewHandler(svc),
 		org.NewHandler(orgSvc),
 		role.NewHandler(roleSvc),
-		authz.NewHandler(authz.NewService(authzStore), authzStore),
+		authz.NewHandler(authzSvc, authzStore),
+		delegation.NewHandler(delSvc, delChecker),
+		delegation.NewJWKSHandler(signer),
 	)
 	log.Printf("base-servers listening on %s", cfg.HTTPAddr)
 	if err := srv.ListenAndServe(); err != nil {

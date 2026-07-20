@@ -46,3 +46,12 @@ func (s *Service) Create(ctx context.Context, in NewInput) (Principal, error) {
 func (s *Service) Get(ctx context.Context, id string) (Principal, error) {
 	return s.store.Get(ctx, id)
 }
+
+// TypeOf implements delegation.PrincipalTyper.
+func (s *Service) TypeOf(ctx context.Context, id string) (engine.PrincipalType, error) {
+	p, err := s.store.Get(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	return p.Type, nil
+}
