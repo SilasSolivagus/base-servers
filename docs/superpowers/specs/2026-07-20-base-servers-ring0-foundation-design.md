@@ -72,7 +72,7 @@ Ring 1~4 各自后续单独一轮 spec → plan → 实现。本文档只覆盖 
 | D2 | 主体类型 | `Principal = Human \| Service \| Agent` | agent 是夹在人和机器之间的第三类主体,需一等建模 |
 | D3 | 组织层级 | v1 = `组织(Org) + 一层团队(Team)`;深层部门树用 `parent_id` 预留不做 | YAGNI,留迭代空间 |
 | D4 | 权限模型 | v1 = **RBAC(组织/团队级角色)+ 资源归属(ownership)**;数据模型按 ReBAC 形状铺 | 务实变体:先能用,ReBAC 引擎后续无痛接入 |
-| D5 | agent 委托 | **OAuth2 Token Exchange(RFC 8693)/ On-Behalf-Of**,约束用 caveat/条件表达 | 踩 2026 行业共识与 IETF 草案;有效权限 = min(自身授予, 授权人权限),可限时/限任务/可撤销 |
+| D5 | agent 委托 | **v1 由 base-servers 自签委托 JWT**(go-jose,含 `act`/`delegation_id`/`cnf.jkt`/`scope`/短TTL + 自有 JWKS 轮换);引擎原生 token-exchange 留作适配器能力(Zitadel 可切)| Keycloak 不原生出 `act`/动态 `delegation_id`,自签避开其最大集成雷、仍合 RFC 8693 形状;有效权限 = **delegator ∩ scope**(用授权人**当前**权限,忽略 agent 自身角色以防混淆代理;"agent 自身上限"改每条委托可选、默认关);限时/限任务/可撤销 |
 | D6 | 对外接入 | **A:OIDC Provider 为主 + 无头 API 补充** | OIDC 是任何语言可调的普通话,一套协议接住人/服务/agent,并白送组织内多系统 SSO |
 | D7 | 造 vs 组合 | **组合:站在成熟身份引擎之上 + 适配器层** | 自研 OAuth2/OIDC 是安全雷区且重复造轮;适配器避免被单一开源绑架 |
 | D8 | 默认引擎 | **Keycloak**(Apache-2.0);适配器保留 Zitadel/Logto 可换 | 唯一今天就同时 ship token-exchange + DPoP + CAEP,且原生多组织,license 干净 |
@@ -148,9 +148,9 @@ Keycloak 同时压中三个最高权重项:
 ### 7.1 OIDC / OAuth2(主轴)
 - 用户登录:authorization-code + PKCE。
 - 服务/agent:client-credentials。
-- **agent 委托:token-exchange(RFC 8693)/ OBO** —— 用宽令牌换取限时、限任务的窄令牌。
-- 令牌:短命 JWT access + refresh,JWKS 轮换。
-- 安全增强:**DPoP** 绑令牌防盗(Keycloak 26.4 起 GA,保留在 v1)。
+- **agent 委托:base-servers 自签委托 JWT(v1)** —— 含 `act={delegator}` / `delegation_id` / `cnf.jkt` / `scope` / 短TTL,base-servers 自有 JWKS 轮换;合 RFC 8693 形状,引擎原生 token-exchange 作适配器能力保留。
+- 令牌:短命 JWT access + refresh,JWKS 轮换(用户/服务令牌由引擎签;委托令牌由 base-servers 签)。
+- 安全增强:**DPoP** 绑令牌防盗 —— **权威校验归资源服务器**;base-servers 提供可复用验证器,PDP 侧仅在 RS 转发 `{proof, htm, htu}` 时做完整校验(签名 + `cnf.jkt` + `ath` + `htu/htm`)。
 - 撤销机制:v1 用**短 TTL + introspection / 黑名单**,按"撤销后有界秒级失效"的**行为**验收;
   **不押 CAEP**。完整 CAEP/SSF 实时推送撤销为 v1.1,适配器留同一接口可无重构升级。
 
@@ -169,7 +169,7 @@ Keycloak 同时压中三个最高权重项:
 引擎能力差异大,适配器必须以**能力标志**建模,不能假设:
 
 - `supportsTokenExchange` / `supportsDPoP` / `supportsCAEP`
-  —— Keycloak 全支持;若换 Logto 等不支持的引擎,委托需我们在 API 层自造(`act`/`may_act` claim 或 token-exchange shim)。
+  —— **v1 委托令牌一律 base-servers 自签**(不依赖引擎的 token-exchange,避开 Keycloak 不出 `act`/动态 `delegation_id` 的雷);此标志预留,将来对 Zitadel 等原生支持的引擎可切换为引擎签发。
 - 组织成员形态:统一"全局用户 + 成员层"(Keycloak/Logto)与"用户绑单组织 + 跨组织授权"(Zitadel)两种模型。
   暴露 `attachUserToOrg` / `grantCrossOrgRole`,各引擎实现不同。
 - 主体元数据:agent 属性映射到 Keycloak user/client attributes + protocol mappers(Zitadel metadata / Logto custom data)。
@@ -199,12 +199,12 @@ Keycloak 同时压中三个最高权重项:
 - **身份**:三态主体注册/登录;全局用户加入多组织并切换;JWKS 轮换后旧令牌校验。
 - **组织**:创建组织 + 团队;成员挂载;组织/团队级角色分配。
 - **权限**:`check()` 对 RBAC 角色与资源归属两条路径均正确;越权被拒。
-- **agent 委托(不可退让的四条门)**:
-  1. **有效权限 ≤ 授权人** —— 核心不变量,须有**对抗性测试**证明 agent 越不过授权人;这就是差异化本身。
-  2. **token-exchange 窄令牌** —— 用宽令牌换"限时 + 限任务"窄令牌,带 `act` / OBO 溯源。
-  3. **撤销真的生效** —— 短 TTL + introspection/黑名单,撤销后**有界秒级失效**(按行为验收,不押 CAEP)。
-  4. **DPoP 防重放** —— 令牌与客户端绑定,盗用/重放被拒。
-  - **下放 v1.1**:完整 CAEP/SSF 实时推送撤销;对 OBO IETF 草案最终形态的任何依赖。
+- **agent 委托(不可退让的四条门,按 3a→3b→3c 顺序落地)**:
+  1. **签发窄令牌(3a)** —— base-servers 自签委托 JWT,带 `act={delegator}` / `delegation_id` / `cnf.jkt` / `scope` / 短TTL;写 `delegations` 记录;`Revoke` 可用。
+  2. **有效权限 = delegator ∩ scope(3b,核心不变量)** —— `allow = action∈scope ∧ Check(delegator, 当前)`,**忽略 agent 自身角色**(防混淆代理);须有**对抗性测试**:授权人没有的权限拒、范围外拒、用授权人**当前**权限(撤授权人角色即时收窄)。**Issue 时禁止"授权人是 agent"**(v1)。"agent 自身上限"为每条委托可选、默认关。
+  3. **撤销真的生效** —— 短 TTL + `delegations.revoked` 黑名单,`CheckDelegated` 每次查库;发→通→撤→**有界秒级拒**(不押 CAEP)。
+  4. **DPoP 防重放(3c)** —— 令牌 `cnf.jkt` 绑定;**权威校验在资源服务器**,base-servers 提供验证器,`CheckDelegated` 仅在 RS 转发 `{proof, htm, htu}` 时做完整校验(签名 + `cnf.jkt` + `ath` + `htu/htm`)。"盗令牌换 key 被拒"演示如实标为 RS 的活、base-servers 协助。
+  - **下放 v1.1**:多跳委托(边表已容纳,加可空 `parent_delegation_id` 为非破坏迁移)、完整 CAEP/SSF 实时推送撤销、引擎原生 token-exchange。
 - **多租户隔离**:A 租户主体无法读写 B 租户资源。
 - **部署**:docker-compose 一键起,冷启动到可服务的健康检查通过。
 
@@ -215,7 +215,9 @@ Keycloak 同时压中三个最高权重项:
 - **Keycloak 运维重量**:JVM,交付外部自托管者足迹最大。缓解:躲在适配器后、提供调优过的 compose。
 - **CAEP/SSF 实验状态(已从关键路径移除)**:Keycloak 26.7 的 SSF 仍为实验开关。
   v1 撤销改用短 TTL + 黑名单,不依赖它;CAEP 作为 v1.1 的可插拔升级,风险已隔离。
-- **token-exchange + DPoP 组合边界**:需核实"客户端换取自身令牌"这条窄路径覆盖我们的 agent 流,再最终敲定。
+- **委托签发已改自签(风险已隔离)**:Keycloak 不原生出 `act`/动态 `delegation_id`,且 token-exchange+DPoP 同出 `cnf.jkt` 未经证实——v1 改为 base-servers 用 go-jose 自签委托 JWT(自有 JWKS),彻底避开该雷;引擎原生签发留作 Zitadel 能力。
+- **DPoP 架构归位**:DPoP 绑"客户端→资源服务器"的请求,PDP 带外收 token+proof 无法验 `htm/htu`。故权威校验归 RS,base-servers 只提供验证器 + 在 RS 转发请求上下文时协助。
+- **base-servers 成为令牌签发方**:自签意味着 RS 要信任 base-servers 的 JWKS——需确定单一 issuer、承担 key 轮换与分发。
 - **引擎可换性**:适配器抽象需在实现早期用第二引擎(Zitadel 或 Logto)做一次冒烟,验证抽象没漏。
 
 ---
