@@ -2,9 +2,17 @@ version: "2"
 sql:
   - engine: postgresql
     schema: db/migrations
-    queries: db/query
+    queries: db/query/principal.sql
     gen:
       go:
         package: db
         out: internal/principal/db
+        sql_package: pgx/v5
+  - engine: postgresql
+    schema: db/migrations
+    queries: db/query/org.sql
+    gen:
+      go:
+        package: db
+        out: internal/org/db
         sql_package: pgx/v5
