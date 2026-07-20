@@ -17,7 +17,11 @@ Self-hosted. Multi-tenant. Standards-based. Stop rebuilding this layer in every 
 
 ---
 
-> **Status: early / alpha.** The foundation (Phase 1) is built and tested end-to-end against real infrastructure. Agent delegation, RBAC, and organizations are next on the [roadmap](#-roadmap). Not production-ready yet — but the spine is real.
+> **Status: early / alpha.** The Ring 0 core is built and tested end-to-end against real Keycloak + Postgres: identity (human / service / agent principals), organizations & RBAC/ownership, and **agent delegation** (the headline). Front-door OIDC login and delivery hardening are next on the [roadmap](#-roadmap). Not production-ready yet.
+>
+> **⚠️ Operational constraints (alpha) — read before deploying:**
+> - **Network-isolate it / trusted callers only.** The control-plane RPCs (issuing delegations, assigning roles, registering ownership) are **not yet authenticated** — caller auth is a later ring. Issuing a delegation *mints real permissions*, so an untrusted caller could name a privileged delegator. Do not expose Ring 0 on an untrusted network until caller auth lands.
+> - **Single replica for now.** Delegation tokens are signed with a per-process key (own JWKS), so a multi-replica deployment would serve mismatched keys. Shared/persisted signing keys + rotation are planned for the delivery-hardening phase.
 
 ## Why base-servers
 
