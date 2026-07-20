@@ -12,6 +12,7 @@ type Config struct {
 	KeycloakRealm     string
 	KeycloakAdminUser string
 	KeycloakAdminPass string
+	DelegationIssuer  string
 }
 
 func env(key, def string) string {
@@ -29,6 +30,7 @@ func Load() (Config, error) {
 		KeycloakRealm:     env("KEYCLOAK_REALM", "base-servers"),
 		KeycloakAdminUser: env("KEYCLOAK_ADMIN_USER", "admin"),
 		KeycloakAdminPass: env("KEYCLOAK_ADMIN_PASS", "admin"),
+		DelegationIssuer:  env("DELEGATION_ISSUER", "base-servers"),
 	}
 	if c.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")

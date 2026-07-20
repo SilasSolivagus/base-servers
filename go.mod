@@ -5,6 +5,7 @@ go 1.26.1
 require (
 	connectrpc.com/connect v1.20.0
 	github.com/Nerzal/gocloak/v13 v13.9.0
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/testcontainers/testcontainers-go v0.43.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.43.0
