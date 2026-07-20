@@ -4,18 +4,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
-	"github.com/SilasSolivagus/base-servers/internal/role"
 )
 
 var ErrInvalidInput = errors.New("invalid org input")
 
-type Service struct {
-	store *Store
-	roles *role.Store
+// RoleSeeder seeds an organization's default roles. Implemented by *role.Store.
+type RoleSeeder interface {
+	SeedDefaults(ctx context.Context, orgID string) error
 }
 
-func NewService(store *Store, roles *role.Store) *Service {
+type Service struct {
+	store *Store
+	roles RoleSeeder
+}
+
+func NewService(store *Store, roles RoleSeeder) *Service {
 	return &Service{store: store, roles: roles}
 }
 
