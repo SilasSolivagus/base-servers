@@ -2,6 +2,7 @@ package authz
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -9,6 +10,8 @@ import (
 
 	db "github.com/SilasSolivagus/base-servers/internal/authz/db"
 )
+
+var ErrInvalidInput = errors.New("invalid authz input")
 
 type Store struct{ q *db.Queries }
 
@@ -23,7 +26,7 @@ func uuid(s string) (pgtype.UUID, error) {
 func (s *Store) RegisterOwnership(ctx context.Context, resType, resID, owner, orgID string) error {
 	oid, err := uuid(orgID)
 	if err != nil {
-		return fmt.Errorf("bad org id: %w", err)
+		return fmt.Errorf("%w: bad org id: %v", ErrInvalidInput, err)
 	}
 	return s.q.RegisterOwnership(ctx, db.RegisterOwnershipParams{
 		ResourceType: resType, ResourceID: resID, OwnerPrincipalID: owner, OrgID: oid,
@@ -37,12 +40,12 @@ func (s *Store) IsOwner(ctx context.Context, resType, resID, principalID string)
 func (s *Store) HasPermission(ctx context.Context, principalID, action, orgID, teamID string) (bool, error) {
 	oid, err := uuid(orgID)
 	if err != nil {
-		return false, fmt.Errorf("bad org id: %w", err)
+		return false, fmt.Errorf("%w: bad org id: %v", ErrInvalidInput, err)
 	}
 	var tid pgtype.UUID
 	if teamID != "" {
 		if tid, err = uuid(teamID); err != nil {
-			return false, fmt.Errorf("bad team id: %w", err)
+			return false, fmt.Errorf("%w: bad team id: %v", ErrInvalidInput, err)
 		}
 	}
 	return s.q.HasPermission(ctx, db.HasPermissionParams{

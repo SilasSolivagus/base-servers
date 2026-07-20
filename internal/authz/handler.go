@@ -2,6 +2,7 @@ package authz
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"connectrpc.com/connect"
@@ -22,19 +23,26 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle(path, hdl)
 }
 
+func code(err error) error {
+	if errors.Is(err, ErrInvalidInput) {
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	return connect.NewError(connect.CodeInternal, err)
+}
+
 func (h *Handler) Check(ctx context.Context, req *connect.Request[v1.CheckRequest]) (*connect.Response[v1.CheckResponse], error) {
 	allowed, err := h.svc.Check(ctx, req.Msg.Subject, req.Msg.Action, Resource{
 		Type: req.Msg.ResourceType, ID: req.Msg.ResourceId, OrgID: req.Msg.OrgId, TeamID: req.Msg.TeamId,
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		return nil, code(err)
 	}
 	return connect.NewResponse(&v1.CheckResponse{Allowed: allowed}), nil
 }
 
 func (h *Handler) RegisterOwnership(ctx context.Context, req *connect.Request[v1.RegisterOwnershipRequest]) (*connect.Response[v1.RegisterOwnershipResponse], error) {
 	if err := h.store.RegisterOwnership(ctx, req.Msg.ResourceType, req.Msg.ResourceId, req.Msg.OwnerPrincipalId, req.Msg.OrgId); err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		return nil, code(err)
 	}
 	return connect.NewResponse(&v1.RegisterOwnershipResponse{}), nil
 }

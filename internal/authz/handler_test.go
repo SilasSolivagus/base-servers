@@ -45,3 +45,24 @@ func TestAuthzHandlerRegisterThenCheck(t *testing.T) {
 		t.Fatal("expected deny for non-owner without role")
 	}
 }
+
+func TestAuthzHandlerCheckBadOrgIDIsInvalidArgument(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	ctx := context.Background()
+	st := authz.NewStore(pool)
+	mux := http.NewServeMux()
+	authz.NewHandler(authz.NewService(st), st).Register(mux)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	c := baseserversv1connect.NewAuthzServiceClient(http.DefaultClient, srv.URL)
+	_, err := c.Check(ctx, connect.NewRequest(&v1.CheckRequest{
+		Subject: "user-1", Action: "doc.delete", ResourceType: "doc", ResourceId: "d1", OrgId: "not-a-uuid",
+	}))
+	if err == nil {
+		t.Fatal("expected error for malformed org_id")
+	}
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
+	}
+}
