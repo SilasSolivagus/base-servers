@@ -1,0 +1,26 @@
+syntax = "proto3";
+package baseservers.v1;
+option go_package = "github.com/SilasSolivagus/base-servers/gen/baseservers/v1;baseserversv1";
+
+message CheckRequest {
+  string subject = 1;
+  string action = 2;
+  string resource_type = 3;
+  string resource_id = 4;
+  string org_id = 5;
+  string team_id = 6;
+}
+message CheckResponse { bool allowed = 1; }
+
+message RegisterOwnershipRequest {
+  string resource_type = 1;
+  string resource_id = 2;
+  string owner_principal_id = 3;
+  string org_id = 4;
+}
+message RegisterOwnershipResponse {}
+
+service AuthzService {
+  rpc Check(CheckRequest) returns (CheckResponse);
+  rpc RegisterOwnership(RegisterOwnershipRequest) returns (RegisterOwnershipResponse);
+}
