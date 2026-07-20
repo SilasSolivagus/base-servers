@@ -37,7 +37,7 @@ func code(err error) error {
 func (h *Handler) Issue(ctx context.Context, req *connect.Request[v1.IssueRequest]) (*connect.Response[v1.IssueResponse], error) {
 	tok, id, err := h.svc.Issue(ctx, IssueInput{
 		AgentID: req.Msg.AgentId, DelegatorID: req.Msg.DelegatorId, OrgID: req.Msg.OrgId,
-		Scope: req.Msg.Scope, TTLSeconds: req.Msg.TtlSeconds,
+		Scope: req.Msg.Scope, TTLSeconds: req.Msg.TtlSeconds, CnfJkt: req.Msg.CnfJkt,
 	})
 	if err != nil {
 		return nil, code(err)
@@ -52,11 +52,14 @@ func (h *Handler) Revoke(ctx context.Context, req *connect.Request[v1.RevokeRequ
 	return connect.NewResponse(&v1.RevokeResponse{}), nil
 }
 
-// CheckDelegated: http_method/http_uri/dpop_proof are Task 6 DPoP placeholders, unused here.
+// CheckDelegated: when the caller (an RS) forwards dpop_proof/http_method/
+// http_uri, CheckDelegatedDPoP additionally verifies DPoP proof-of-possession
+// against the token's cnf.jkt; when they're empty it degrades to the 3b
+// behavior (DPoP enforcement is otherwise the resource server's job).
 func (h *Handler) CheckDelegated(ctx context.Context, req *connect.Request[v1.CheckDelegatedRequest]) (*connect.Response[v1.CheckDelegatedResponse], error) {
-	allowed, err := h.checker.CheckDelegated(ctx, req.Msg.Token, req.Msg.Action, authz.Resource{
+	allowed, err := h.checker.CheckDelegatedDPoP(ctx, req.Msg.Token, req.Msg.Action, authz.Resource{
 		Type: req.Msg.ResourceType, ID: req.Msg.ResourceId, OrgID: req.Msg.OrgId, TeamID: req.Msg.TeamId,
-	})
+	}, req.Msg.DpopProof, req.Msg.HttpMethod, req.Msg.HttpUri)
 	if err != nil {
 		return nil, code(err)
 	}

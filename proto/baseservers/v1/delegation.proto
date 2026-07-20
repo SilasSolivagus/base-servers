@@ -8,6 +8,7 @@ message IssueRequest {
   string org_id = 3;
   repeated string scope = 4;
   int64 ttl_seconds = 5;
+  string cnf_jkt = 6; // RFC 9449 DPoP key thumbprint to bind the issued token to
 }
 message IssueResponse { string token = 1; string delegation_id = 2; }
 
@@ -21,9 +22,9 @@ message CheckDelegatedRequest {
   string resource_id = 4;
   string org_id = 5;
   string team_id = 6;
-  string dpop_proof = 7;  // placeholder for Task 6 DPoP, unused
-  string http_method = 8; // placeholder for Task 6 DPoP, unused
-  string http_uri = 9;    // placeholder for Task 6 DPoP, unused
+  string dpop_proof = 7;  // RFC 9449 DPoP proof JWT; optional, RS-forwarded
+  string http_method = 8; // HTTP method of the request being authorized; required with dpop_proof
+  string http_uri = 9;    // HTTP URI (no query/fragment) of the request; required with dpop_proof
 }
 message CheckDelegatedResponse { bool allowed = 1; }
 

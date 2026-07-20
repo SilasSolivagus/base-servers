@@ -28,6 +28,7 @@ type IssueRequest struct {
 	OrgId         string                 `protobuf:"bytes,3,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
 	Scope         []string               `protobuf:"bytes,4,rep,name=scope,proto3" json:"scope,omitempty"`
 	TtlSeconds    int64                  `protobuf:"varint,5,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
+	CnfJkt        string                 `protobuf:"bytes,6,opt,name=cnf_jkt,json=cnfJkt,proto3" json:"cnf_jkt,omitempty"` // RFC 9449 DPoP key thumbprint to bind the issued token to
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -95,6 +96,13 @@ func (x *IssueRequest) GetTtlSeconds() int64 {
 		return x.TtlSeconds
 	}
 	return 0
+}
+
+func (x *IssueRequest) GetCnfJkt() string {
+	if x != nil {
+		return x.CnfJkt
+	}
+	return ""
 }
 
 type IssueResponse struct {
@@ -237,9 +245,9 @@ type CheckDelegatedRequest struct {
 	ResourceId    string                 `protobuf:"bytes,4,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
 	OrgId         string                 `protobuf:"bytes,5,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
 	TeamId        string                 `protobuf:"bytes,6,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
-	DpopProof     string                 `protobuf:"bytes,7,opt,name=dpop_proof,json=dpopProof,proto3" json:"dpop_proof,omitempty"`    // placeholder for Task 6 DPoP, unused
-	HttpMethod    string                 `protobuf:"bytes,8,opt,name=http_method,json=httpMethod,proto3" json:"http_method,omitempty"` // placeholder for Task 6 DPoP, unused
-	HttpUri       string                 `protobuf:"bytes,9,opt,name=http_uri,json=httpUri,proto3" json:"http_uri,omitempty"`          // placeholder for Task 6 DPoP, unused
+	DpopProof     string                 `protobuf:"bytes,7,opt,name=dpop_proof,json=dpopProof,proto3" json:"dpop_proof,omitempty"`    // RFC 9449 DPoP proof JWT; optional, RS-forwarded
+	HttpMethod    string                 `protobuf:"bytes,8,opt,name=http_method,json=httpMethod,proto3" json:"http_method,omitempty"` // HTTP method of the request being authorized; required with dpop_proof
+	HttpUri       string                 `protobuf:"bytes,9,opt,name=http_uri,json=httpUri,proto3" json:"http_uri,omitempty"`          // HTTP URI (no query/fragment) of the request; required with dpop_proof
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -385,14 +393,15 @@ var File_baseservers_v1_delegation_proto protoreflect.FileDescriptor
 
 const file_baseservers_v1_delegation_proto_rawDesc = "" +
 	"\n" +
-	"\x1fbaseservers/v1/delegation.proto\x12\x0ebaseservers.v1\"\x9a\x01\n" +
+	"\x1fbaseservers/v1/delegation.proto\x12\x0ebaseservers.v1\"\xb3\x01\n" +
 	"\fIssueRequest\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12!\n" +
 	"\fdelegator_id\x18\x02 \x01(\tR\vdelegatorId\x12\x15\n" +
 	"\x06org_id\x18\x03 \x01(\tR\x05orgId\x12\x14\n" +
 	"\x05scope\x18\x04 \x03(\tR\x05scope\x12\x1f\n" +
 	"\vttl_seconds\x18\x05 \x01(\x03R\n" +
-	"ttlSeconds\"J\n" +
+	"ttlSeconds\x12\x17\n" +
+	"\acnf_jkt\x18\x06 \x01(\tR\x06cnfJkt\"J\n" +
 	"\rIssueResponse\x12\x14\n" +
 	"\x05token\x18\x01 \x01(\tR\x05token\x12#\n" +
 	"\rdelegation_id\x18\x02 \x01(\tR\fdelegationId\"4\n" +
