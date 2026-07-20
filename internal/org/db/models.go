@@ -8,6 +8,19 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Delegation struct {
+	ID                   pgtype.UUID
+	AgentPrincipalID     string
+	DelegatorPrincipalID string
+	OrgID                pgtype.UUID
+	Scope                []string
+	CnfJkt               string
+	ParentDelegationID   pgtype.UUID
+	ExpiresAt            pgtype.Timestamptz
+	Revoked              bool
+	CreatedAt            pgtype.Timestamptz
+}
+
 type Membership struct {
 	PrincipalID string
 	OrgID       pgtype.UUID
