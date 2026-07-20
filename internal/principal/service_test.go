@@ -29,9 +29,13 @@ func TestServiceCreateAgentPersists(t *testing.T) {
 
 func TestServiceCreateRejectsInvalid(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
-	svc := NewService(fake.New(), NewStore(pool))
+	eng := fake.New()
+	svc := NewService(eng, NewStore(pool))
 	_, err := svc.Create(context.Background(), NewInput{Type: engine.Agent, DisplayName: "x"}) // 缺 owner
 	if err == nil {
 		t.Fatal("expected validation error for agent without owner")
+	}
+	if eng.CreatePrincipalCalls != 0 {
+		t.Fatalf("expected 0 engine calls on validation error, got %d", eng.CreatePrincipalCalls)
 	}
 }
