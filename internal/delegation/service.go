@@ -67,6 +67,10 @@ func (s *Service) Issue(ctx context.Context, in IssueInput) (string, string, err
 	return tok, id, nil
 }
 
+func (s *Service) Get(ctx context.Context, id string) (Delegation, error) {
+	return s.store.Get(ctx, id)
+}
+
 func (s *Service) Revoke(ctx context.Context, id string) error {
 	if id == "" {
 		return fmt.Errorf("%w: delegation_id required", ErrInvalidInput)

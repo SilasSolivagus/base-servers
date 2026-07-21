@@ -3,12 +3,14 @@ package delegation
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"connectrpc.com/connect"
 
 	v1 "github.com/SilasSolivagus/base-servers/gen/baseservers/v1"
 	"github.com/SilasSolivagus/base-servers/gen/baseservers/v1/baseserversv1connect"
+	"github.com/SilasSolivagus/base-servers/internal/authn"
 	"github.com/SilasSolivagus/base-servers/internal/authz"
 )
 
@@ -35,6 +37,15 @@ func code(err error) error {
 }
 
 func (h *Handler) Issue(ctx context.Context, req *connect.Request[v1.IssueRequest]) (*connect.Response[v1.IssueResponse], error) {
+	c, ok := authn.CallerFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+	// SystemAdmin is retained as an operational escape hatch; otherwise the
+	// caller may only delegate its own authority (confused-deputy guard).
+	if !c.SystemAdmin && c.PrincipalID != req.Msg.DelegatorId {
+		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("caller may only delegate its own authority"))
+	}
 	tok, id, err := h.svc.Issue(ctx, IssueInput{
 		AgentID: req.Msg.AgentId, DelegatorID: req.Msg.DelegatorId, OrgID: req.Msg.OrgId,
 		Scope: req.Msg.Scope, TTLSeconds: req.Msg.TtlSeconds, CnfJkt: req.Msg.CnfJkt,
@@ -46,6 +57,19 @@ func (h *Handler) Issue(ctx context.Context, req *connect.Request[v1.IssueReques
 }
 
 func (h *Handler) Revoke(ctx context.Context, req *connect.Request[v1.RevokeRequest]) (*connect.Response[v1.RevokeResponse], error) {
+	c, ok := authn.CallerFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+	d, err := h.svc.Get(ctx, req.Msg.DelegationId)
+	if err != nil {
+		return nil, code(err)
+	}
+	// SystemAdmin is retained as an operational escape hatch; otherwise only
+	// the delegation's own delegator may revoke it.
+	if !c.SystemAdmin && c.PrincipalID != d.DelegatorID {
+		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("only the delegator or a system-admin may revoke"))
+	}
 	if err := h.svc.Revoke(ctx, req.Msg.DelegationId); err != nil {
 		return nil, code(err)
 	}
