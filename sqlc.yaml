@@ -31,3 +31,8 @@ sql:
     queries: db/query/delegation.sql
     gen:
       go: { package: db, out: internal/delegation/db, sql_package: pgx/v5 }
+  - engine: postgresql
+    schema: db/migrations
+    queries: db/query/signingkey.sql
+    gen:
+      go: { package: db, out: internal/signingkey/db, sql_package: pgx/v5 }

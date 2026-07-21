@@ -65,6 +65,15 @@ type RoleAssignment struct {
 	ScopeID     pgtype.UUID
 }
 
+type SigningKey struct {
+	Kid         string
+	Alg         string
+	PrivateEnc  []byte
+	State       string
+	CreatedAt   pgtype.Timestamptz
+	RetireAfter pgtype.Timestamptz
+}
+
 type Team struct {
 	ID    pgtype.UUID
 	OrgID pgtype.UUID
