@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,7 +15,7 @@ import (
 
 func TestHealthz(t *testing.T) {
 	mux := http.NewServeMux()
-	mountAll(mux, nil) // handlers 可为 nil,仅测健康检查
+	mountAll(mux, nil, nil) // ready、handlers 均可为 nil,仅测健康检查
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/healthz")
@@ -29,7 +31,7 @@ func TestMountRegistersAll(t *testing.T) {
 	var called int
 	reg := registrarFunc(func(mux *http.ServeMux) { called++ })
 	mux := http.NewServeMux()
-	mountAll(mux, []Registrar{reg, reg})
+	mountAll(mux, nil, []Registrar{reg, reg})
 	if called != 2 {
 		t.Fatalf("expected 2 registrations, got %d", called)
 	}
@@ -45,6 +47,34 @@ type registrarFunc func(*http.ServeMux)
 
 func (f registrarFunc) Register(mux *http.ServeMux) { f(mux) }
 
+func TestReadyzOK(t *testing.T) {
+	srv := New(config.Config{HTTPAddr: ":0"}, func(_ context.Context) error { return nil })
+	ts := httptest.NewServer(srv.Handler)
+	defer ts.Close()
+	resp, err := http.Get(ts.URL + "/readyz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("readyz = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestReadyzFailing(t *testing.T) {
+	srv := New(config.Config{HTTPAddr: ":0"}, func(_ context.Context) error { return errors.New("db down") })
+	ts := httptest.NewServer(srv.Handler)
+	defer ts.Close()
+	resp, err := http.Get(ts.URL + "/readyz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("readyz = %d, want 503", resp.StatusCode)
+	}
+}
+
 func TestJWKSEndpoint(t *testing.T) {
 	k, err := signingkey.GenerateKey()
 	if err != nil {
@@ -52,7 +82,7 @@ func TestJWKSEndpoint(t *testing.T) {
 	}
 	ks := signingkey.Keyset{Active: *k, All: []signingkey.Key{*k}}
 	signer := delegation.NewSigner("test-issuer", func() signingkey.Keyset { return ks })
-	srv := New(config.Config{HTTPAddr: ":0"}, delegation.NewJWKSHandler(signer))
+	srv := New(config.Config{HTTPAddr: ":0"}, nil, delegation.NewJWKSHandler(signer))
 	ts := httptest.NewServer(srv.Handler)
 	t.Cleanup(ts.Close)
 

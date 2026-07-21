@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -12,10 +13,26 @@ type Registrar interface {
 	Register(mux *http.ServeMux)
 }
 
-func mountAll(mux *http.ServeMux, handlers []Registrar) {
+// ReadyFunc 报告依赖(DB/Keycloak)是否就绪;nil 视为始终就绪。
+type ReadyFunc func(context.Context) error
+
+func mountAll(mux *http.ServeMux, ready ReadyFunc, handlers []Registrar) {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		if ready != nil {
+			ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+			defer cancel()
+			if err := ready(ctx); err != nil {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte("not ready"))
+				return
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ready"))
 	})
 	for _, h := range handlers {
 		if h != nil {
@@ -24,8 +41,8 @@ func mountAll(mux *http.ServeMux, handlers []Registrar) {
 	}
 }
 
-func New(cfg config.Config, handlers ...Registrar) *http.Server {
+func New(cfg config.Config, ready ReadyFunc, handlers ...Registrar) *http.Server {
 	mux := http.NewServeMux()
-	mountAll(mux, handlers)
+	mountAll(mux, ready, handlers)
 	return &http.Server{Addr: cfg.HTTPAddr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 }

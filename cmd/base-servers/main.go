@@ -58,7 +58,7 @@ func main() {
 	delSvc := delegation.NewService(delStore, signer, svc)
 	delChecker := delegation.NewChecker(delStore, signer, authzSvc)
 
-	srv := server.New(cfg,
+	srv := server.New(cfg, nil,
 		principal.NewHandler(svc),
 		org.NewHandler(orgSvc),
 		role.NewHandler(roleSvc),
