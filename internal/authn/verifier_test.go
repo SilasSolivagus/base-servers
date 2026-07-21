@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -240,7 +241,8 @@ func TestVerifierJWKSCacheExpiresAndRefreshes(t *testing.T) {
 	}
 
 	v := NewVerifier(srv.URL, testIssuer, []string{testAzp})
-	v.cacheTTL = 20 * time.Millisecond // same-package test: set field directly
+	v.cacheTTL = 20 * time.Millisecond          // same-package test: set field directly
+	v.minRefreshInterval = 1 * time.Millisecond // don't let the throttle mask the TTL-expiry refetch
 
 	tok := mustSign(t, sig, validClaims())
 	if _, err := v.Verify(context.Background(), tok); err != nil {
@@ -257,9 +259,60 @@ func TestVerifierJWKSCacheExpiresAndRefreshes(t *testing.T) {
 		t.Fatalf("expected cached key to still verify within TTL: %v", err)
 	}
 
-	time.Sleep(30 * time.Millisecond) // exceed cacheTTL
+	time.Sleep(30 * time.Millisecond) // exceed cacheTTL and the refresh throttle
 
 	if _, err := v.Verify(context.Background(), tok); err == nil {
 		t.Fatal("expected revoked key to be rejected once cache TTL has elapsed")
+	}
+}
+
+// Guards the pre-auth amplification fix: the kid is read from the JWT header
+// before signature verification, so an anonymous caller sending garbage/unknown
+// kids must not be able to force a JWKS fetch per request. Two consecutive
+// Verify calls with unknown kids should trigger at most one outbound fetch.
+func TestVerifierThrottlesJWKSRefreshOnUnknownKid(t *testing.T) {
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate rsa key: %v", err)
+	}
+
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		jwks := jose.JSONWebKeySet{
+			Keys: []jose.JSONWebKey{
+				{Key: &priv.PublicKey, KeyID: testKid, Algorithm: "RS256", Use: "sig"},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(jwks)
+	}))
+	t.Cleanup(srv.Close)
+
+	sig, err := jose.NewSigner(
+		jose.SigningKey{Algorithm: jose.RS256, Key: priv},
+		(&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", "unknown-kid-does-not-exist"),
+	)
+	if err != nil {
+		t.Fatalf("build signer: %v", err)
+	}
+
+	v := NewVerifier(srv.URL, testIssuer, []string{testAzp})
+	// Keep the default (production) minRefreshInterval to prove the throttle
+	// actually suppresses the second fetch.
+
+	claims := validClaims()
+	tok1 := mustSign(t, sig, claims)
+	tok2 := mustSign(t, sig, claims)
+
+	if _, err := v.Verify(context.Background(), tok1); err == nil {
+		t.Fatal("expected unknown-kid token to be rejected")
+	}
+	if _, err := v.Verify(context.Background(), tok2); err == nil {
+		t.Fatal("expected unknown-kid token to be rejected")
+	}
+
+	if got := atomic.LoadInt32(&hits); got != 1 {
+		t.Fatalf("expected exactly 1 JWKS fetch across 2 unknown-kid requests, got %d", got)
 	}
 }

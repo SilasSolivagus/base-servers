@@ -20,10 +20,12 @@ type Verifier struct {
 	allowedAzp map[string]bool
 	http       *http.Client
 
-	mu       sync.RWMutex
-	keys     map[string]*rsa.PublicKey // kid → key
-	fetched  time.Time
-	cacheTTL time.Duration
+	mu                 sync.RWMutex
+	keys               map[string]*rsa.PublicKey // kid → key
+	fetched            time.Time
+	cacheTTL           time.Duration
+	minRefreshInterval time.Duration
+	lastRefreshAttempt time.Time
 }
 
 func NewVerifier(jwksURL, issuer string, allowedAzp []string) *Verifier {
@@ -33,9 +35,10 @@ func NewVerifier(jwksURL, issuer string, allowedAzp []string) *Verifier {
 	}
 	return &Verifier{
 		jwksURL: jwksURL, issuer: issuer, allowedAzp: m,
-		http:     &http.Client{Timeout: 5 * time.Second},
-		keys:     map[string]*rsa.PublicKey{},
-		cacheTTL: 5 * time.Minute,
+		http:               &http.Client{Timeout: 5 * time.Second},
+		keys:               map[string]*rsa.PublicKey{},
+		cacheTTL:           5 * time.Minute,
+		minRefreshInterval: 15 * time.Second,
 	}
 }
 
@@ -92,6 +95,30 @@ func (v *Verifier) keyFor(ctx context.Context, kid string) (*rsa.PublicKey, erro
 	if fresh {
 		return k, nil
 	}
+
+	// Throttle outbound JWKS fetches: the kid is read from the JWT header
+	// before signature verification, so an anonymous caller sending garbage
+	// kids could otherwise force one Keycloak fetch per request. Set
+	// lastRefreshAttempt before the fetch so a failing fetch also throttles.
+	v.mu.Lock()
+	throttled := time.Since(v.lastRefreshAttempt) < v.minRefreshInterval
+	if !throttled {
+		v.lastRefreshAttempt = time.Now()
+	}
+	v.mu.Unlock()
+
+	if throttled {
+		// A refresh was already attempted recently; don't fire another one.
+		// A stale-but-present key can keep being used until the throttle
+		// allows a refresh (cacheTTL >> minRefreshInterval, so this only
+		// matters right at the staleness boundary). A genuinely unknown kid
+		// is unverifiable regardless of a refresh, so fail immediately.
+		if k == nil {
+			return nil, fmt.Errorf("no JWKS key for kid %q", kid)
+		}
+		return k, nil
+	}
+
 	if err := v.refresh(ctx); err != nil {
 		return nil, err
 	}
