@@ -83,9 +83,9 @@ base-servers is scoped as an onion — a small mandatory core, then optional rin
 | Phase | Scope | Status |
 |-------|-------|--------|
 | **1 · Foundation** | Go service, pluggable identity-engine adapter, three-type principals, Postgres store, Connect RPC API | ✅ **Shipped** |
-| **2 · Org & Permissions** | Organizations, teams, membership, RBAC roles, `check(subject, action, resource)`, resource ownership | ⏳ Next |
-| **3 · Agent Delegation** *(the headline)* | Token-exchange narrow tokens, effective-perms ≤ delegator, short-TTL + denylist revocation, DPoP sender-binding | ⏳ Planned |
-| **4 · Front-door & Delivery** | OIDC-fronted login + SSO, headless admin API, multi-tenant isolation, one-command deploy | ⏳ Planned |
+| **2 · Org & Permissions** | Organizations, teams, membership, RBAC roles, `check(subject, action, resource)`, resource ownership | ✅ **Shipped** |
+| **3 · Agent Delegation** *(the headline)* | Token-exchange narrow tokens, effective-perms ≤ delegator, short-TTL + denylist revocation, DPoP sender-binding | ✅ **Shipped** |
+| **4 · Front-door & Delivery** | OIDC-fronted login + SSO, headless admin API, multi-tenant isolation, one-command deploy | ⏳ Next |
 
 Outer rings (notifications, audit, billing, webhooks, agent-to-agent messaging …) come later, each as its own module.
 
