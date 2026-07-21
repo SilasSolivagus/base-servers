@@ -33,6 +33,8 @@ func (e *Engine) CreatePrincipal(_ context.Context, p engine.EnginePrincipal) (s
 	return id, nil
 }
 
+func (e *Engine) EnsureProvisioned(_ context.Context) error { return nil }
+
 func (e *Engine) GetPrincipal(_ context.Context, id string) (engine.EnginePrincipal, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()

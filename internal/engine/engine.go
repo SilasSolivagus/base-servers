@@ -27,4 +27,6 @@ type IdentityEngine interface {
 	Capabilities() Capabilities
 	CreatePrincipal(ctx context.Context, p EnginePrincipal) (string, error)
 	GetPrincipal(ctx context.Context, id string) (EnginePrincipal, error)
+	// EnsureProvisioned 幂等确保引擎侧的 realm/clients 等静态基线存在。
+	EnsureProvisioned(ctx context.Context) error
 }

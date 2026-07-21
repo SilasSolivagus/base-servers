@@ -14,6 +14,10 @@ import (
 
 type Config struct {
 	BaseURL, Realm, AdminUser, AdminPass string
+	LoginClientID                        string
+	LoginRedirectURIs                    []string
+	ServiceClientID                      string
+	ServiceClientSecret                  string
 }
 
 type Adapter struct {
