@@ -49,7 +49,7 @@ services:
       keycloak:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "/base-servers"]  # 占位:distroless 无 shell/curl,靠 depends_on + /readyz 外部探
+      test: ["CMD", "/base-servers", "healthcheck"]  # probes local /readyz (pure-Go, no shell needed)
       interval: 10s
       timeout: 3s
       retries: 5

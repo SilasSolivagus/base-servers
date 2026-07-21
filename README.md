@@ -22,6 +22,7 @@ Self-hosted. Multi-tenant. Standards-based. Stop rebuilding this layer in every 
 > **⚠️ Operational constraints (alpha) — read before deploying:**
 > - **Network-isolate it / trusted callers only.** The control-plane RPCs (issuing delegations, assigning roles, registering ownership) are **not yet authenticated** — caller auth is a later ring. Issuing a delegation *mints real permissions*, so an untrusted caller could name a privileged delegator. Do not expose Ring 0 on an untrusted network until caller auth lands.
 > - **Multi-replica ready.** Delegation signing keys are persisted in Postgres (envelope-encrypted with an env `BS_SIGNING_KEK`) and shared across replicas, with rotation via the `rotate-signing-key` command. Set `BS_SIGNING_KEK` to the base64 of 32 random bytes; the service refuses to start without it.
+> - **Key rotation is break-glass, with a bounded window.** `rotate-signing-key` opens a **fail-closed** window (~90s = 30s internal keyset cache + 60s JWKS `max-age`) where freshly minted tokens under the new key may be *rejected* by not-yet-refreshed replicas and external verifiers until JWKS caches converge — no wrongful accepts, self-healing. Rotate during low traffic, treat rotation as complete only after ≥90s, and don't rotate twice within that window. Previously-issued tokens stay valid (old keys are retained ~25h ≥ max token TTL). True two-phase (publish-then-promote) rotation is planned and additive.
 
 ## Why base-servers
 

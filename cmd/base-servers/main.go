@@ -26,6 +26,10 @@ func main() {
 		runRotate()
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		runHealthcheck()
+		return
+	}
 	runServer()
 }
 
@@ -131,6 +135,25 @@ func runRotate() {
 		log.Fatalf("rotate: %v", err)
 	}
 	log.Printf("rotated: new active signing key kid=%s (previous key retiring)", k.Kid)
+	log.Printf("operators: allow ~90s for replicas/verifiers to converge (internal keyset cache + JWKS max-age) before considering rotation complete or rotating again")
+}
+
+func runHealthcheck() {
+	addr := os.Getenv("HTTP_ADDR")
+	if addr == "" {
+		addr = ":8081"
+	}
+	c := &http.Client{Timeout: 2 * time.Second}
+	resp, err := c.Get("http://localhost" + addr + "/readyz")
+	if err != nil {
+		log.Printf("healthcheck: %v", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("healthcheck: /readyz status = %d, want 200", resp.StatusCode)
+		os.Exit(1)
+	}
 }
 
 func keycloakReachable(ctx context.Context, baseURL, realm string) error {
