@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -21,12 +22,26 @@ func Apply(ctx context.Context, pool *pgxpool.Pool) error {
 	if err != nil {
 		return err
 	}
-	defer conn.Release()
+	// 释放 advisory lock 必须用与调用方 ctx 无关的 detached context:如果调用方 ctx
+	// 恰好在 Apply 返回时被取消/超时(启动阶段用 context.WithTimeout 包裹 Apply 时
+	// 很常见),用 ctx 做 unlock 会静默失败,而 conn.Release() 会把仍持有会话级锁的
+	// 物理连接放回池中——后续每次 Apply 都会在 pg_advisory_lock 上阻塞,直到 pgx
+	// 回收该连接(可能长达 MaxConnLifetime)。所以 unlock 失败时不能 Release,必须
+	// Hijack 出来直接销毁这条物理连接。
+	defer func() {
+		unlockCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, unlockErr := conn.Exec(unlockCtx, `SELECT pg_advisory_unlock($1)`, advisoryLockKey); unlockErr != nil {
+			hijacked := conn.Hijack()
+			_ = hijacked.Close(context.Background())
+			return
+		}
+		conn.Release()
+	}()
 
 	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, advisoryLockKey); err != nil {
 		return err
 	}
-	defer conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, advisoryLockKey)
 
 	if _, err := conn.Exec(ctx,
 		`CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
