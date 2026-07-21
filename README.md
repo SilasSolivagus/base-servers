@@ -21,7 +21,7 @@ Self-hosted. Multi-tenant. Standards-based. Stop rebuilding this layer in every 
 >
 > **⚠️ Operational constraints (alpha) — read before deploying:**
 > - **Network-isolate it / trusted callers only.** The control-plane RPCs (issuing delegations, assigning roles, registering ownership) are **not yet authenticated** — caller auth is a later ring. Issuing a delegation *mints real permissions*, so an untrusted caller could name a privileged delegator. Do not expose Ring 0 on an untrusted network until caller auth lands.
-> - **Single replica for now.** Delegation tokens are signed with a per-process key (own JWKS), so a multi-replica deployment would serve mismatched keys. Shared/persisted signing keys + rotation are planned for the delivery-hardening phase.
+> - **Multi-replica ready.** Delegation signing keys are persisted in Postgres (envelope-encrypted with an env `BS_SIGNING_KEK`) and shared across replicas, with rotation via the `rotate-signing-key` command. Set `BS_SIGNING_KEK` to the base64 of 32 random bytes; the service refuses to start without it.
 
 ## Why base-servers
 
