@@ -99,3 +99,19 @@ func (q *Queries) GetOrg(ctx context.Context, id pgtype.UUID) (GetOrgRow, error)
 	err := row.Scan(&i.ID, &i.Name, &i.ParentID)
 	return i, err
 }
+
+const isMember = `-- name: IsMember :one
+SELECT EXISTS(SELECT 1 FROM memberships WHERE principal_id = $1 AND org_id = $2)
+`
+
+type IsMemberParams struct {
+	PrincipalID string
+	OrgID       pgtype.UUID
+}
+
+func (q *Queries) IsMember(ctx context.Context, arg IsMemberParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isMember, arg.PrincipalID, arg.OrgID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}

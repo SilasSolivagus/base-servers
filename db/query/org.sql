@@ -17,3 +17,6 @@ ON CONFLICT (principal_id, org_id) DO NOTHING;
 -- name: AddTeamMember :exec
 INSERT INTO team_memberships (principal_id, team_id) VALUES ($1, $2)
 ON CONFLICT (principal_id, team_id) DO NOTHING;
+
+-- name: IsMember :one
+SELECT EXISTS(SELECT 1 FROM memberships WHERE principal_id = $1 AND org_id = $2);

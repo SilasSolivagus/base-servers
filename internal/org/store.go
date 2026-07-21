@@ -93,3 +93,11 @@ func (s *Store) AddTeamMember(ctx context.Context, principalID, teamID string) e
 	}
 	return s.q.AddTeamMember(ctx, db.AddTeamMemberParams{PrincipalID: principalID, TeamID: uid})
 }
+
+func (s *Store) IsMember(ctx context.Context, principalID, orgID string) (bool, error) {
+	oid, err := parseUUID(orgID)
+	if err != nil {
+		return false, nil // bad org_id treated as non-member (fail-safe)
+	}
+	return s.q.IsMember(ctx, db.IsMemberParams{PrincipalID: principalID, OrgID: oid})
+}
