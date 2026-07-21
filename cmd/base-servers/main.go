@@ -69,9 +69,20 @@ func runServer() {
 	eng, err := keycloak.New(keycloak.Config{
 		BaseURL: cfg.KeycloakURL, Realm: cfg.KeycloakRealm,
 		AdminUser: cfg.KeycloakAdminUser, AdminPass: cfg.KeycloakAdminPass,
+		LoginClientID: cfg.OIDCLoginClientID, LoginRedirectURIs: cfg.OIDCLoginRedirectURIs,
+		ServiceClientID: cfg.OIDCServiceClientID, ServiceClientSecret: cfg.OIDCServiceClientSecret,
 	})
 	if err != nil {
 		log.Fatalf("keycloak: %v", err)
+	}
+
+	// 服务 client 密钥 fail-closed:与 KEK 同风格,空密钥即拒绝启动,绝不明文降级。
+	if cfg.OIDCServiceClientSecret == "" {
+		log.Fatalf("BS_SERVICE_CLIENT_SECRET is required")
+	}
+	// OIDC 前门供给:realm + 两 client(幂等)。admin 凭证特权,失败即 fail-closed。
+	if err := eng.EnsureProvisioned(ctx); err != nil {
+		log.Fatalf("provision oidc: %v", err)
 	}
 
 	svc := principal.NewService(eng, principal.NewStore(pool))
