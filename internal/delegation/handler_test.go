@@ -11,6 +11,7 @@ import (
 
 	v1 "github.com/SilasSolivagus/base-servers/gen/baseservers/v1"
 	"github.com/SilasSolivagus/base-servers/gen/baseservers/v1/baseserversv1connect"
+	"github.com/SilasSolivagus/base-servers/internal/authn"
 	"github.com/SilasSolivagus/base-servers/internal/authz"
 	"github.com/SilasSolivagus/base-servers/internal/delegation"
 	"github.com/SilasSolivagus/base-servers/internal/engine"
@@ -38,7 +39,7 @@ func newTestServer(t *testing.T, pool *pgxpool.Pool, typer fakeTyper) *httptest.
 	svc := delegation.NewService(st, sig, typer)
 	checker := delegation.NewChecker(st, sig, authz.NewService(authz.NewStore(pool)))
 	mux := http.NewServeMux()
-	delegation.NewHandler(svc, checker).Register(mux)
+	delegation.NewHandler(svc, checker).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv
@@ -52,7 +53,7 @@ func TestDelegationHandlerIssueAndRevoke(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	c := baseserversv1connect.NewDelegationServiceClient(http.DefaultClient, srv.URL)
+	c := baseserversv1connect.NewDelegationServiceClient(http.DefaultClient, srv.URL, testsupport.ClientOpts()...)
 	resp, err := c.Issue(context.Background(), connect.NewRequest(&v1.IssueRequest{
 		AgentId: "ag1", DelegatorId: "u1", OrgId: o.ID, Scope: []string{"doc.edit"}, TtlSeconds: 300,
 	}))
@@ -86,7 +87,7 @@ func TestDelegationHandlerCheckDelegatedAllowThenDenyAfterRevoke(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	c := baseserversv1connect.NewDelegationServiceClient(http.DefaultClient, srv.URL)
+	c := baseserversv1connect.NewDelegationServiceClient(http.DefaultClient, srv.URL, testsupport.ClientOpts()...)
 	issueResp, err := c.Issue(context.Background(), connect.NewRequest(&v1.IssueRequest{
 		AgentId: "ag1", DelegatorId: "u1", OrgId: o.ID, Scope: []string{"doc.edit"}, TtlSeconds: 300,
 	}))
@@ -130,7 +131,7 @@ func TestDelegationHandlerIssueRejectsDelegatorIsAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	c := baseserversv1connect.NewDelegationServiceClient(http.DefaultClient, srv.URL)
+	c := baseserversv1connect.NewDelegationServiceClient(http.DefaultClient, srv.URL, testsupport.ClientOpts()...)
 	_, err = c.Issue(context.Background(), connect.NewRequest(&v1.IssueRequest{
 		AgentId: "ag1", DelegatorId: "ag2", OrgId: o.ID, Scope: []string{"doc.edit"}, TtlSeconds: 300,
 	}))

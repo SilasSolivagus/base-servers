@@ -18,8 +18,8 @@ type Handler struct {
 
 func NewHandler(svc *Service, store *Store) *Handler { return &Handler{svc: svc, store: store} }
 
-func (h *Handler) Register(mux *http.ServeMux) {
-	path, hdl := baseserversv1connect.NewAuthzServiceHandler(h)
+func (h *Handler) Register(mux *http.ServeMux, opts ...connect.HandlerOption) {
+	path, hdl := baseserversv1connect.NewAuthzServiceHandler(h, opts...)
 	mux.Handle(path, hdl)
 }
 

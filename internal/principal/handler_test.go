@@ -10,6 +10,7 @@ import (
 
 	v1 "github.com/SilasSolivagus/base-servers/gen/baseservers/v1"
 	"github.com/SilasSolivagus/base-servers/gen/baseservers/v1/baseserversv1connect"
+	"github.com/SilasSolivagus/base-servers/internal/authn"
 	"github.com/SilasSolivagus/base-servers/internal/engine/fake"
 	"github.com/SilasSolivagus/base-servers/internal/principal"
 	"github.com/SilasSolivagus/base-servers/internal/testsupport"
@@ -19,11 +20,11 @@ func TestHandlerCreateAndGet(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	svc := principal.NewService(fake.New(), principal.NewStore(pool))
 	mux := http.NewServeMux()
-	principal.NewHandler(svc).Register(mux)
+	principal.NewHandler(svc).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	client := baseserversv1connect.NewPrincipalServiceClient(http.DefaultClient, srv.URL)
+	client := baseserversv1connect.NewPrincipalServiceClient(http.DefaultClient, srv.URL, testsupport.ClientOpts()...)
 	created, err := client.CreatePrincipal(context.Background(), connect.NewRequest(&v1.CreatePrincipalRequest{
 		Type: v1.PrincipalType_PRINCIPAL_TYPE_AGENT, DisplayName: "planner", OwnerPrincipalId: "u1", Purpose: "triage",
 	}))
@@ -54,11 +55,11 @@ func TestHandlerCreatePrincipalInvalidInput(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	svc := principal.NewService(fake.New(), principal.NewStore(pool))
 	mux := http.NewServeMux()
-	principal.NewHandler(svc).Register(mux)
+	principal.NewHandler(svc).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	client := baseserversv1connect.NewPrincipalServiceClient(http.DefaultClient, srv.URL)
+	client := baseserversv1connect.NewPrincipalServiceClient(http.DefaultClient, srv.URL, testsupport.ClientOpts()...)
 	_, err := client.CreatePrincipal(context.Background(), connect.NewRequest(&v1.CreatePrincipalRequest{
 		Type: v1.PrincipalType_PRINCIPAL_TYPE_AGENT, DisplayName: "planner",
 	}))
@@ -74,11 +75,11 @@ func TestHandlerGetPrincipalNotFound(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	svc := principal.NewService(fake.New(), principal.NewStore(pool))
 	mux := http.NewServeMux()
-	principal.NewHandler(svc).Register(mux)
+	principal.NewHandler(svc).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	client := baseserversv1connect.NewPrincipalServiceClient(http.DefaultClient, srv.URL)
+	client := baseserversv1connect.NewPrincipalServiceClient(http.DefaultClient, srv.URL, testsupport.ClientOpts()...)
 	_, err := client.GetPrincipal(context.Background(), connect.NewRequest(&v1.GetPrincipalRequest{
 		Id: "does-not-exist",
 	}))

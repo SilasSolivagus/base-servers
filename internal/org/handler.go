@@ -15,8 +15,8 @@ type Handler struct{ svc *Service }
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 
-func (h *Handler) Register(mux *http.ServeMux) {
-	path, hdl := baseserversv1connect.NewOrgServiceHandler(h)
+func (h *Handler) Register(mux *http.ServeMux, opts ...connect.HandlerOption) {
+	path, hdl := baseserversv1connect.NewOrgServiceHandler(h, opts...)
 	mux.Handle(path, hdl)
 }
 

@@ -7,8 +7,10 @@ import (
 	"os"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/SilasSolivagus/base-servers/internal/authn"
 	"github.com/SilasSolivagus/base-servers/internal/authz"
 	"github.com/SilasSolivagus/base-servers/internal/config"
 	"github.com/SilasSolivagus/base-servers/internal/delegation"
@@ -85,6 +87,15 @@ func runServer() {
 		log.Fatalf("provision oidc: %v", err)
 	}
 
+	// 认证 fail-closed:公开 issuer 未设 → 拒绝启动,绝不降级为匿名放行。
+	if cfg.PublicIssuer == "" {
+		log.Fatalf("BS_PUBLIC_ISSUER is required")
+	}
+	jwksURL := cfg.KeycloakURL + "/realms/" + cfg.KeycloakRealm + "/protocol/openid-connect/certs"
+	verifier := authn.NewVerifier(jwksURL, cfg.PublicIssuer,
+		[]string{cfg.OIDCLoginClientID, cfg.OIDCServiceClientID})
+	authInterceptor := connect.WithInterceptors(authn.Interceptor(verifier, cfg.RootToken))
+
 	svc := principal.NewService(eng, principal.NewStore(pool))
 	orgSvc := org.NewService(org.NewStore(pool), role.NewStore(pool))
 	roleSvc := role.NewService(role.NewStore(pool))
@@ -103,7 +114,7 @@ func runServer() {
 		return keycloakReachable(ctx, cfg.KeycloakURL, cfg.KeycloakRealm)
 	}
 
-	srv := server.New(cfg, ready,
+	srv := server.New(cfg, ready, []connect.HandlerOption{authInterceptor},
 		principal.NewHandler(svc),
 		org.NewHandler(orgSvc),
 		role.NewHandler(roleSvc),

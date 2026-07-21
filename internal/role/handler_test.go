@@ -10,6 +10,7 @@ import (
 
 	v1 "github.com/SilasSolivagus/base-servers/gen/baseservers/v1"
 	"github.com/SilasSolivagus/base-servers/gen/baseservers/v1/baseserversv1connect"
+	"github.com/SilasSolivagus/base-servers/internal/authn"
 	"github.com/SilasSolivagus/base-servers/internal/org"
 	"github.com/SilasSolivagus/base-servers/internal/role"
 	"github.com/SilasSolivagus/base-servers/internal/testsupport"
@@ -22,11 +23,11 @@ func TestRoleHandlerCreateAndAssign(t *testing.T) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	role.NewHandler(role.NewService(role.NewStore(pool))).Register(mux)
+	role.NewHandler(role.NewService(role.NewStore(pool))).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	c := baseserversv1connect.NewRoleServiceClient(http.DefaultClient, srv.URL)
+	c := baseserversv1connect.NewRoleServiceClient(http.DefaultClient, srv.URL, testsupport.ClientOpts()...)
 	r, err := c.CreateRole(context.Background(), connect.NewRequest(&v1.CreateRoleRequest{
 		OrgId: o.ID, Name: "editor", Permissions: []string{"doc.edit"},
 	}))
@@ -44,10 +45,10 @@ func TestRoleHandlerCreateAndAssign(t *testing.T) {
 func TestRoleHandlerRejectsBadScope(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	mux := http.NewServeMux()
-	role.NewHandler(role.NewService(role.NewStore(pool))).Register(mux)
+	role.NewHandler(role.NewService(role.NewStore(pool))).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	c := baseserversv1connect.NewRoleServiceClient(http.DefaultClient, srv.URL)
+	c := baseserversv1connect.NewRoleServiceClient(http.DefaultClient, srv.URL, testsupport.ClientOpts()...)
 	_, err := c.AssignRole(context.Background(), connect.NewRequest(&v1.AssignRoleRequest{
 		PrincipalId: "u", RoleId: "00000000-0000-0000-0000-000000000000", ScopeType: "planet", ScopeId: "x",
 	}))

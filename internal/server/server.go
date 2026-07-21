@@ -5,18 +5,20 @@ import (
 	"net/http"
 	"time"
 
+	"connectrpc.com/connect"
+
 	"github.com/SilasSolivagus/base-servers/internal/config"
 )
 
 // Registrar 是任何能把自己挂到 mux 上的 connect handler。
 type Registrar interface {
-	Register(mux *http.ServeMux)
+	Register(mux *http.ServeMux, opts ...connect.HandlerOption)
 }
 
 // ReadyFunc 报告依赖(DB/Keycloak)是否就绪;nil 视为始终就绪。
 type ReadyFunc func(context.Context) error
 
-func mountAll(mux *http.ServeMux, ready ReadyFunc, handlers []Registrar) {
+func mountAll(mux *http.ServeMux, ready ReadyFunc, opts []connect.HandlerOption, handlers []Registrar) {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
@@ -36,13 +38,13 @@ func mountAll(mux *http.ServeMux, ready ReadyFunc, handlers []Registrar) {
 	})
 	for _, h := range handlers {
 		if h != nil {
-			h.Register(mux)
+			h.Register(mux, opts...)
 		}
 	}
 }
 
-func New(cfg config.Config, ready ReadyFunc, handlers ...Registrar) *http.Server {
+func New(cfg config.Config, ready ReadyFunc, opts []connect.HandlerOption, handlers ...Registrar) *http.Server {
 	mux := http.NewServeMux()
-	mountAll(mux, ready, handlers)
+	mountAll(mux, ready, opts, handlers)
 	return &http.Server{Addr: cfg.HTTPAddr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 }

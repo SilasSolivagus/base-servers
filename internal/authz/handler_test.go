@@ -10,6 +10,7 @@ import (
 
 	v1 "github.com/SilasSolivagus/base-servers/gen/baseservers/v1"
 	"github.com/SilasSolivagus/base-servers/gen/baseservers/v1/baseserversv1connect"
+	"github.com/SilasSolivagus/base-servers/internal/authn"
 	"github.com/SilasSolivagus/base-servers/internal/authz"
 	"github.com/SilasSolivagus/base-servers/internal/org"
 	"github.com/SilasSolivagus/base-servers/internal/testsupport"
@@ -21,11 +22,11 @@ func TestAuthzHandlerRegisterThenCheck(t *testing.T) {
 	o, _ := org.NewStore(pool).CreateOrg(ctx, "Acme")
 	st := authz.NewStore(pool)
 	mux := http.NewServeMux()
-	authz.NewHandler(authz.NewService(st), st).Register(mux)
+	authz.NewHandler(authz.NewService(st), st).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	c := baseserversv1connect.NewAuthzServiceClient(http.DefaultClient, srv.URL)
+	c := baseserversv1connect.NewAuthzServiceClient(http.DefaultClient, srv.URL, testsupport.ClientOpts()...)
 	_, err := c.RegisterOwnership(ctx, connect.NewRequest(&v1.RegisterOwnershipRequest{
 		ResourceType: "doc", ResourceId: "d1", OwnerPrincipalId: "user-1", OrgId: o.ID,
 	}))
@@ -51,11 +52,11 @@ func TestAuthzHandlerCheckBadOrgIDIsInvalidArgument(t *testing.T) {
 	ctx := context.Background()
 	st := authz.NewStore(pool)
 	mux := http.NewServeMux()
-	authz.NewHandler(authz.NewService(st), st).Register(mux)
+	authz.NewHandler(authz.NewService(st), st).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	c := baseserversv1connect.NewAuthzServiceClient(http.DefaultClient, srv.URL)
+	c := baseserversv1connect.NewAuthzServiceClient(http.DefaultClient, srv.URL, testsupport.ClientOpts()...)
 	_, err := c.Check(ctx, connect.NewRequest(&v1.CheckRequest{
 		Subject: "user-1", Action: "doc.delete", ResourceType: "doc", ResourceId: "d1", OrgId: "not-a-uuid",
 	}))

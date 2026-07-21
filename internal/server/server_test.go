@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"connectrpc.com/connect"
+
 	"github.com/SilasSolivagus/base-servers/internal/config"
 	"github.com/SilasSolivagus/base-servers/internal/delegation"
 	"github.com/SilasSolivagus/base-servers/internal/signingkey"
@@ -15,7 +17,7 @@ import (
 
 func TestHealthz(t *testing.T) {
 	mux := http.NewServeMux()
-	mountAll(mux, nil, nil) // ready、handlers 均可为 nil,仅测健康检查
+	mountAll(mux, nil, nil, nil) // ready、opts、handlers 均可为 nil,仅测健康检查
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/healthz")
@@ -31,7 +33,7 @@ func TestMountRegistersAll(t *testing.T) {
 	var called int
 	reg := registrarFunc(func(mux *http.ServeMux) { called++ })
 	mux := http.NewServeMux()
-	mountAll(mux, nil, []Registrar{reg, reg})
+	mountAll(mux, nil, nil, []Registrar{reg, reg})
 	if called != 2 {
 		t.Fatalf("expected 2 registrations, got %d", called)
 	}
@@ -45,10 +47,10 @@ func TestMountRegistersAll(t *testing.T) {
 
 type registrarFunc func(*http.ServeMux)
 
-func (f registrarFunc) Register(mux *http.ServeMux) { f(mux) }
+func (f registrarFunc) Register(mux *http.ServeMux, _ ...connect.HandlerOption) { f(mux) }
 
 func TestReadyzOK(t *testing.T) {
-	srv := New(config.Config{HTTPAddr: ":0"}, func(_ context.Context) error { return nil })
+	srv := New(config.Config{HTTPAddr: ":0"}, func(_ context.Context) error { return nil }, nil)
 	ts := httptest.NewServer(srv.Handler)
 	defer ts.Close()
 	resp, err := http.Get(ts.URL + "/readyz")
@@ -62,7 +64,7 @@ func TestReadyzOK(t *testing.T) {
 }
 
 func TestReadyzFailing(t *testing.T) {
-	srv := New(config.Config{HTTPAddr: ":0"}, func(_ context.Context) error { return errors.New("db down") })
+	srv := New(config.Config{HTTPAddr: ":0"}, func(_ context.Context) error { return errors.New("db down") }, nil)
 	ts := httptest.NewServer(srv.Handler)
 	defer ts.Close()
 	resp, err := http.Get(ts.URL + "/readyz")
@@ -82,7 +84,7 @@ func TestJWKSEndpoint(t *testing.T) {
 	}
 	ks := signingkey.Keyset{Active: *k, All: []signingkey.Key{*k}}
 	signer := delegation.NewSigner("test-issuer", func() signingkey.Keyset { return ks })
-	srv := New(config.Config{HTTPAddr: ":0"}, nil, delegation.NewJWKSHandler(signer))
+	srv := New(config.Config{HTTPAddr: ":0"}, nil, nil, delegation.NewJWKSHandler(signer))
 	ts := httptest.NewServer(srv.Handler)
 	t.Cleanup(ts.Close)
 
