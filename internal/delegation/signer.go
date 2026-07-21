@@ -2,14 +2,14 @@ package delegation
 
 import (
 	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
+
+	"github.com/SilasSolivagus/base-servers/internal/signingkey"
 )
 
 type Claims struct {
@@ -42,28 +42,30 @@ type cnf struct {
 
 type Signer struct {
 	issuer string
-	key    *ecdsa.PrivateKey
-	kid    string
-	signer jose.Signer
+	keyset func() signingkey.Keyset
 }
 
-func NewSigner(issuer string) (*Signer, error) {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, err
-	}
-	kid := "bs-del-1"
-	sig, err := jose.NewSigner(
-		jose.SigningKey{Algorithm: jose.ES256, Key: key},
-		(&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", kid),
+// NewSigner 由外部提供 keyset(生产传 signingkey.Manager.Keyset)。
+func NewSigner(issuer string, keyset func() signingkey.Keyset) *Signer {
+	return &Signer{issuer: issuer, keyset: keyset}
+}
+
+func (s *Signer) newJOSESigner(k signingkey.Key) (jose.Signer, error) {
+	return jose.NewSigner(
+		jose.SigningKey{Algorithm: jose.ES256, Key: k.Priv},
+		(&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", k.Kid),
 	)
-	if err != nil {
-		return nil, err
-	}
-	return &Signer{issuer: issuer, key: key, kid: kid, signer: sig}, nil
 }
 
 func (s *Signer) Sign(c Claims) (string, error) {
+	active := s.keyset().Active
+	if active.Priv == nil {
+		return "", fmt.Errorf("no active signing key")
+	}
+	sig, err := s.newJOSESigner(active)
+	if err != nil {
+		return "", err
+	}
 	tc := tokenClaims{
 		Iss: s.issuer, Sub: c.Subject, Exp: c.ExpiresAt.Unix(), Iat: c.IssuedAt.Unix(),
 		Act: actClaim{Sub: c.Delegator}, DID: c.DelegationID, Scope: c.Scope, Org: c.OrgID,
@@ -71,7 +73,7 @@ func (s *Signer) Sign(c Claims) (string, error) {
 	if c.CnfJkt != "" {
 		tc.Cnf = &cnf{Jkt: c.CnfJkt}
 	}
-	return jwt.Signed(s.signer).Claims(tc).Serialize()
+	return jwt.Signed(sig).Claims(tc).Serialize()
 }
 
 func (s *Signer) Verify(token string) (Claims, error) {
@@ -79,8 +81,13 @@ func (s *Signer) Verify(token string) (Claims, error) {
 	if err != nil {
 		return Claims{}, err
 	}
+	ks := s.keyset()
+	pub, err := s.publicFor(parsed, ks)
+	if err != nil {
+		return Claims{}, err
+	}
 	var tc tokenClaims
-	if err := parsed.Claims(&s.key.PublicKey, &tc); err != nil {
+	if err := parsed.Claims(pub, &tc); err != nil {
 		return Claims{}, err
 	}
 	now := time.Now()
@@ -100,9 +107,27 @@ func (s *Signer) Verify(token string) (Claims, error) {
 	return out, nil
 }
 
+// publicFor 按令牌头 kid 命中公钥;kid 缺失/未命中时返回错误(fail-closed)。
+func (s *Signer) publicFor(parsed *jwt.JSONWebToken, ks signingkey.Keyset) (*ecdsa.PublicKey, error) {
+	var kid string
+	if len(parsed.Headers) > 0 {
+		kid = parsed.Headers[0].KeyID
+	}
+	for _, k := range ks.All {
+		if k.Kid == kid {
+			return &k.Priv.PublicKey, nil
+		}
+	}
+	return nil, fmt.Errorf("no signing key for kid %q", kid)
+}
+
 func (s *Signer) JWKS() []byte {
-	jwk := jose.JSONWebKey{Key: &s.key.PublicKey, KeyID: s.kid, Algorithm: "ES256", Use: "sig"}
-	set := jose.JSONWebKeySet{Keys: []jose.JSONWebKey{jwk}}
-	b, _ := json.Marshal(set)
+	var jwks []jose.JSONWebKey
+	for _, k := range s.keyset().All {
+		jwks = append(jwks, jose.JSONWebKey{
+			Key: &k.Priv.PublicKey, KeyID: k.Kid, Algorithm: "ES256", Use: "sig",
+		})
+	}
+	b, _ := json.Marshal(jose.JSONWebKeySet{Keys: jwks})
 	return b
 }
