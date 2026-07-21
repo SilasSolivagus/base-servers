@@ -12,6 +12,12 @@ type Service struct{ store *Store }
 
 func NewService(store *Store) *Service { return &Service{store: store} }
 
+// RoleOrg returns the org_id that owns the given role. Used by the handler to
+// resolve which org's membership to check before authorizing AssignRole.
+func (s *Service) RoleOrg(ctx context.Context, roleID string) (string, error) {
+	return s.store.RoleOrg(ctx, roleID)
+}
+
 func (s *Service) CreateRole(ctx context.Context, orgID, name string, perms []string) (Role, error) {
 	if orgID == "" || name == "" {
 		return Role{}, fmt.Errorf("%w: org_id and name required", ErrInvalidInput)

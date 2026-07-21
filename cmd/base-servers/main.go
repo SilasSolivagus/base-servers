@@ -97,7 +97,8 @@ func runServer() {
 	authInterceptor := connect.WithInterceptors(authn.Interceptor(verifier, cfg.RootToken))
 
 	svc := principal.NewService(eng, principal.NewStore(pool))
-	orgSvc := org.NewService(org.NewStore(pool), role.NewStore(pool))
+	orgStore := org.NewStore(pool)
+	orgSvc := org.NewService(orgStore, role.NewStore(pool))
 	roleSvc := role.NewService(role.NewStore(pool))
 	authzStore := authz.NewStore(pool)
 	authzSvc := authz.NewService(authzStore)
@@ -116,9 +117,9 @@ func runServer() {
 
 	srv := server.New(cfg, ready, []connect.HandlerOption{authInterceptor},
 		principal.NewHandler(svc),
-		org.NewHandler(orgSvc),
-		role.NewHandler(roleSvc),
-		authz.NewHandler(authzSvc, authzStore),
+		org.NewHandler(orgSvc, orgStore),
+		role.NewHandler(roleSvc, orgStore),
+		authz.NewHandler(authzSvc, authzStore, orgStore),
 		delegation.NewHandler(delSvc, delChecker),
 		delegation.NewJWKSHandler(signer),
 	)

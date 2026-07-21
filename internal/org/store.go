@@ -101,3 +101,20 @@ func (s *Store) IsMember(ctx context.Context, principalID, orgID string) (bool, 
 	}
 	return s.q.IsMember(ctx, db.IsMemberParams{PrincipalID: principalID, OrgID: oid})
 }
+
+// TeamOrg returns the org_id that owns the given team. Returns ErrNotFound
+// if teamID is malformed or the team does not exist.
+func (s *Store) TeamOrg(ctx context.Context, teamID string) (string, error) {
+	tid, err := parseUUID(teamID)
+	if err != nil {
+		return "", ErrNotFound
+	}
+	orgID, err := s.q.GetTeamOrg(ctx, tid)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrNotFound
+		}
+		return "", err
+	}
+	return orgID.String(), nil
+}

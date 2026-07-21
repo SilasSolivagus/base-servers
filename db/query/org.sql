@@ -20,3 +20,6 @@ ON CONFLICT (principal_id, team_id) DO NOTHING;
 
 -- name: IsMember :one
 SELECT EXISTS(SELECT 1 FROM memberships WHERE principal_id = $1 AND org_id = $2);
+
+-- name: GetTeamOrg :one
+SELECT org_id FROM teams WHERE id = $1;

@@ -18,9 +18,10 @@ import (
 
 func TestOrgHandlerCreateAndTeam(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
-	svc := org.NewService(org.NewStore(pool), role.NewStore(pool))
+	orgStore := org.NewStore(pool)
+	svc := org.NewService(orgStore, role.NewStore(pool))
 	mux := http.NewServeMux()
-	org.NewHandler(svc).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	org.NewHandler(svc, orgStore).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
@@ -43,14 +44,136 @@ func TestOrgHandlerCreateAndTeam(t *testing.T) {
 
 func TestOrgHandlerRejectsEmpty(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
-	svc := org.NewService(org.NewStore(pool), role.NewStore(pool))
+	orgStore := org.NewStore(pool)
+	svc := org.NewService(orgStore, role.NewStore(pool))
 	mux := http.NewServeMux()
-	org.NewHandler(svc).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	org.NewHandler(svc, orgStore).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	c := baseserversv1connect.NewOrgServiceClient(http.DefaultClient, srv.URL, testsupport.ClientOpts()...)
 	_, err := c.CreateOrganization(context.Background(), connect.NewRequest(&v1.CreateOrganizationRequest{Name: ""}))
 	if connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("expected InvalidArgument, got %v (%v)", connect.CodeOf(err), err)
+	}
+}
+
+// CreateOrganization is a system-capability RPC: only SystemAdmin may call it.
+func TestOrgHandlerCreateOrganizationRequiresSystemAdmin(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	orgStore := org.NewStore(pool)
+	svc := org.NewService(orgStore, role.NewStore(pool))
+	h := org.NewHandler(svc, orgStore)
+
+	ctx := authn.WithCaller(context.Background(), authn.Caller{PrincipalID: "not-root", SystemAdmin: false})
+	_, err := h.CreateOrganization(ctx, connect.NewRequest(&v1.CreateOrganizationRequest{Name: "Acme"}))
+	if connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("expected PermissionDenied, got %v (%v)", connect.CodeOf(err), err)
+	}
+}
+
+// CreateTeam, AddMember and AddTeamMember are org-scoped: a caller must be a
+// member of the target org. Cross-tenant callers get PermissionDenied; a
+// member of the org (or SystemAdmin) is allowed through.
+func TestOrgHandlerCreateTeamRequiresMembership(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	orgStore := org.NewStore(pool)
+	svc := org.NewService(orgStore, role.NewStore(pool))
+	h := org.NewHandler(svc, orgStore)
+	ctx := context.Background()
+
+	orgA, err := orgStore.CreateOrg(ctx, "Tenant A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	orgB, err := orgStore.CreateOrg(ctx, "Tenant B")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := orgStore.AddMember(ctx, "member-a", orgA.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	crossCtx := authn.WithCaller(ctx, authn.Caller{PrincipalID: "member-a", SystemAdmin: false})
+	if _, err := h.CreateTeam(crossCtx, connect.NewRequest(&v1.CreateTeamRequest{OrgId: orgB.ID, Name: "Eng"})); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("cross-tenant CreateTeam: expected PermissionDenied, got %v (%v)", connect.CodeOf(err), err)
+	}
+
+	memberCtx := authn.WithCaller(ctx, authn.Caller{PrincipalID: "member-a", SystemAdmin: false})
+	if _, err := h.CreateTeam(memberCtx, connect.NewRequest(&v1.CreateTeamRequest{OrgId: orgA.ID, Name: "Eng"})); err != nil {
+		t.Fatalf("member CreateTeam: expected success, got %v", err)
+	}
+
+	adminCtx := authn.WithCaller(ctx, authn.Caller{PrincipalID: "root", SystemAdmin: true})
+	if _, err := h.CreateTeam(adminCtx, connect.NewRequest(&v1.CreateTeamRequest{OrgId: orgB.ID, Name: "Sales"})); err != nil {
+		t.Fatalf("SystemAdmin CreateTeam: expected success, got %v", err)
+	}
+}
+
+func TestOrgHandlerAddMemberRequiresMembership(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	orgStore := org.NewStore(pool)
+	svc := org.NewService(orgStore, role.NewStore(pool))
+	h := org.NewHandler(svc, orgStore)
+	ctx := context.Background()
+
+	orgA, err := orgStore.CreateOrg(ctx, "Tenant A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	orgB, err := orgStore.CreateOrg(ctx, "Tenant B")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := orgStore.AddMember(ctx, "member-a", orgA.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	crossCtx := authn.WithCaller(ctx, authn.Caller{PrincipalID: "member-a", SystemAdmin: false})
+	if _, err := h.AddMember(crossCtx, connect.NewRequest(&v1.AddMemberRequest{PrincipalId: "newbie", OrgId: orgB.ID})); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("cross-tenant AddMember: expected PermissionDenied, got %v (%v)", connect.CodeOf(err), err)
+	}
+
+	memberCtx := authn.WithCaller(ctx, authn.Caller{PrincipalID: "member-a", SystemAdmin: false})
+	if _, err := h.AddMember(memberCtx, connect.NewRequest(&v1.AddMemberRequest{PrincipalId: "newbie", OrgId: orgA.ID})); err != nil {
+		t.Fatalf("member AddMember: expected success, got %v", err)
+	}
+}
+
+func TestOrgHandlerAddTeamMemberRequiresMembership(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	orgStore := org.NewStore(pool)
+	svc := org.NewService(orgStore, role.NewStore(pool))
+	h := org.NewHandler(svc, orgStore)
+	ctx := context.Background()
+
+	orgA, err := orgStore.CreateOrg(ctx, "Tenant A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	orgB, err := orgStore.CreateOrg(ctx, "Tenant B")
+	if err != nil {
+		t.Fatal(err)
+	}
+	teamB, err := orgStore.CreateTeam(ctx, orgB.ID, "Eng")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := orgStore.AddMember(ctx, "member-a", orgA.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := orgStore.AddMember(ctx, "member-b", orgB.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// member-a belongs to orgA, not orgB (which owns teamB): resolved to
+	// orgB via team_id -> org_id, so must be denied cross-tenant.
+	crossCtx := authn.WithCaller(ctx, authn.Caller{PrincipalID: "member-a", SystemAdmin: false})
+	if _, err := h.AddTeamMember(crossCtx, connect.NewRequest(&v1.AddTeamMemberRequest{PrincipalId: "newbie", TeamId: teamB.ID})); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("cross-tenant AddTeamMember: expected PermissionDenied, got %v (%v)", connect.CodeOf(err), err)
+	}
+
+	memberCtx := authn.WithCaller(ctx, authn.Caller{PrincipalID: "member-b", SystemAdmin: false})
+	if _, err := h.AddTeamMember(memberCtx, connect.NewRequest(&v1.AddTeamMemberRequest{PrincipalId: "newbie", TeamId: teamB.ID})); err != nil {
+		t.Fatalf("member AddTeamMember: expected success, got %v", err)
 	}
 }

@@ -22,7 +22,7 @@ func TestAuthzHandlerRegisterThenCheck(t *testing.T) {
 	o, _ := org.NewStore(pool).CreateOrg(ctx, "Acme")
 	st := authz.NewStore(pool)
 	mux := http.NewServeMux()
-	authz.NewHandler(authz.NewService(st), st).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	authz.NewHandler(authz.NewService(st), st, org.NewStore(pool)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
@@ -52,7 +52,7 @@ func TestAuthzHandlerCheckBadOrgIDIsInvalidArgument(t *testing.T) {
 	ctx := context.Background()
 	st := authz.NewStore(pool)
 	mux := http.NewServeMux()
-	authz.NewHandler(authz.NewService(st), st).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	authz.NewHandler(authz.NewService(st), st, org.NewStore(pool)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
@@ -65,5 +65,82 @@ func TestAuthzHandlerCheckBadOrgIDIsInvalidArgument(t *testing.T) {
 	}
 	if connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
+	}
+}
+
+// Check and RegisterOwnership are org-scoped: a caller must be a member of
+// req.OrgId to run permission checks or register ownership within that org.
+func TestAuthzHandlerCheckRequiresMembership(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	ctx := context.Background()
+	orgStore := org.NewStore(pool)
+	st := authz.NewStore(pool)
+	h := authz.NewHandler(authz.NewService(st), st, orgStore)
+
+	orgA, err := orgStore.CreateOrg(ctx, "Tenant A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	orgB, err := orgStore.CreateOrg(ctx, "Tenant B")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := orgStore.AddMember(ctx, "member-a", orgA.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	crossCtx := authn.WithCaller(ctx, authn.Caller{PrincipalID: "member-a", SystemAdmin: false})
+	if _, err := h.Check(crossCtx, connect.NewRequest(&v1.CheckRequest{
+		Subject: "member-a", Action: "doc.delete", ResourceType: "doc", ResourceId: "d1", OrgId: orgB.ID,
+	})); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("cross-tenant Check: expected PermissionDenied, got %v (%v)", connect.CodeOf(err), err)
+	}
+
+	memberCtx := authn.WithCaller(ctx, authn.Caller{PrincipalID: "member-a", SystemAdmin: false})
+	if _, err := h.Check(memberCtx, connect.NewRequest(&v1.CheckRequest{
+		Subject: "member-a", Action: "doc.delete", ResourceType: "doc", ResourceId: "d1", OrgId: orgA.ID,
+	})); err != nil {
+		t.Fatalf("member Check: expected success, got %v", err)
+	}
+
+	adminCtx := authn.WithCaller(ctx, authn.Caller{PrincipalID: "root", SystemAdmin: true})
+	if _, err := h.Check(adminCtx, connect.NewRequest(&v1.CheckRequest{
+		Subject: "member-a", Action: "doc.delete", ResourceType: "doc", ResourceId: "d1", OrgId: orgB.ID,
+	})); err != nil {
+		t.Fatalf("SystemAdmin Check: expected success, got %v", err)
+	}
+}
+
+func TestAuthzHandlerRegisterOwnershipRequiresMembership(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	ctx := context.Background()
+	orgStore := org.NewStore(pool)
+	st := authz.NewStore(pool)
+	h := authz.NewHandler(authz.NewService(st), st, orgStore)
+
+	orgA, err := orgStore.CreateOrg(ctx, "Tenant A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	orgB, err := orgStore.CreateOrg(ctx, "Tenant B")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := orgStore.AddMember(ctx, "member-a", orgA.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	crossCtx := authn.WithCaller(ctx, authn.Caller{PrincipalID: "member-a", SystemAdmin: false})
+	if _, err := h.RegisterOwnership(crossCtx, connect.NewRequest(&v1.RegisterOwnershipRequest{
+		ResourceType: "doc", ResourceId: "d1", OwnerPrincipalId: "member-a", OrgId: orgB.ID,
+	})); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("cross-tenant RegisterOwnership: expected PermissionDenied, got %v (%v)", connect.CodeOf(err), err)
+	}
+
+	memberCtx := authn.WithCaller(ctx, authn.Caller{PrincipalID: "member-a", SystemAdmin: false})
+	if _, err := h.RegisterOwnership(memberCtx, connect.NewRequest(&v1.RegisterOwnershipRequest{
+		ResourceType: "doc", ResourceId: "d1", OwnerPrincipalId: "member-a", OrgId: orgA.ID,
+	})); err != nil {
+		t.Fatalf("member RegisterOwnership: expected success, got %v", err)
 	}
 }

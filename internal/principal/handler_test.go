@@ -71,6 +71,23 @@ func TestHandlerCreatePrincipalInvalidInput(t *testing.T) {
 	}
 }
 
+// CreatePrincipal is a system-capability RPC: only SystemAdmin may call it.
+// Call the handler directly (bypassing the wire/interceptor) so we can inject
+// a non-admin Caller, which the root-token-only test wire cannot produce.
+func TestHandlerCreatePrincipalRequiresSystemAdmin(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	svc := principal.NewService(fake.New(), principal.NewStore(pool))
+	h := principal.NewHandler(svc)
+
+	ctx := authn.WithCaller(context.Background(), authn.Caller{PrincipalID: "not-root", SystemAdmin: false})
+	_, err := h.CreatePrincipal(ctx, connect.NewRequest(&v1.CreatePrincipalRequest{
+		Type: v1.PrincipalType_PRINCIPAL_TYPE_AGENT, DisplayName: "planner", OwnerPrincipalId: "u1", Purpose: "triage",
+	}))
+	if connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("expected PermissionDenied, got %v (%v)", connect.CodeOf(err), err)
+	}
+}
+
 func TestHandlerGetPrincipalNotFound(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	svc := principal.NewService(fake.New(), principal.NewStore(pool))

@@ -9,14 +9,18 @@ import (
 
 	v1 "github.com/SilasSolivagus/base-servers/gen/baseservers/v1"
 	"github.com/SilasSolivagus/base-servers/gen/baseservers/v1/baseserversv1connect"
+	"github.com/SilasSolivagus/base-servers/internal/authn"
 )
 
 type Handler struct {
-	svc   *Service
-	store *Store
+	svc     *Service
+	store   *Store
+	members authn.MemberChecker
 }
 
-func NewHandler(svc *Service, store *Store) *Handler { return &Handler{svc: svc, store: store} }
+func NewHandler(svc *Service, store *Store, members authn.MemberChecker) *Handler {
+	return &Handler{svc: svc, store: store, members: members}
+}
 
 func (h *Handler) Register(mux *http.ServeMux, opts ...connect.HandlerOption) {
 	path, hdl := baseserversv1connect.NewAuthzServiceHandler(h, opts...)
@@ -31,6 +35,9 @@ func code(err error) error {
 }
 
 func (h *Handler) Check(ctx context.Context, req *connect.Request[v1.CheckRequest]) (*connect.Response[v1.CheckResponse], error) {
+	if _, err := authn.RequireMember(ctx, h.members, req.Msg.OrgId); err != nil {
+		return nil, err
+	}
 	allowed, err := h.svc.Check(ctx, req.Msg.Subject, req.Msg.Action, Resource{
 		Type: req.Msg.ResourceType, ID: req.Msg.ResourceId, OrgID: req.Msg.OrgId, TeamID: req.Msg.TeamId,
 	})
@@ -41,6 +48,9 @@ func (h *Handler) Check(ctx context.Context, req *connect.Request[v1.CheckReques
 }
 
 func (h *Handler) RegisterOwnership(ctx context.Context, req *connect.Request[v1.RegisterOwnershipRequest]) (*connect.Response[v1.RegisterOwnershipResponse], error) {
+	if _, err := authn.RequireMember(ctx, h.members, req.Msg.OrgId); err != nil {
+		return nil, err
+	}
 	if err := h.store.RegisterOwnership(ctx, req.Msg.ResourceType, req.Msg.ResourceId, req.Msg.OwnerPrincipalId, req.Msg.OrgId); err != nil {
 		return nil, code(err)
 	}

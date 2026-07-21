@@ -9,6 +9,7 @@ import (
 
 	v1 "github.com/SilasSolivagus/base-servers/gen/baseservers/v1"
 	"github.com/SilasSolivagus/base-servers/gen/baseservers/v1/baseserversv1connect"
+	"github.com/SilasSolivagus/base-servers/internal/authn"
 	"github.com/SilasSolivagus/base-servers/internal/engine"
 )
 
@@ -41,6 +42,9 @@ func toProto(p Principal) *v1.Principal {
 }
 
 func (h *Handler) CreatePrincipal(ctx context.Context, req *connect.Request[v1.CreatePrincipalRequest]) (*connect.Response[v1.CreatePrincipalResponse], error) {
+	if err := authn.RequireSystemAdmin(ctx); err != nil {
+		return nil, err
+	}
 	p, err := h.svc.Create(ctx, NewInput{
 		Type:             protoToType[req.Msg.Type],
 		DisplayName:      req.Msg.DisplayName,

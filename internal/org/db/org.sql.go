@@ -100,6 +100,17 @@ func (q *Queries) GetOrg(ctx context.Context, id pgtype.UUID) (GetOrgRow, error)
 	return i, err
 }
 
+const getTeamOrg = `-- name: GetTeamOrg :one
+SELECT org_id FROM teams WHERE id = $1
+`
+
+func (q *Queries) GetTeamOrg(ctx context.Context, id pgtype.UUID) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, getTeamOrg, id)
+	var org_id pgtype.UUID
+	err := row.Scan(&org_id)
+	return org_id, err
+}
+
 const isMember = `-- name: IsMember :one
 SELECT EXISTS(SELECT 1 FROM memberships WHERE principal_id = $1 AND org_id = $2)
 `
