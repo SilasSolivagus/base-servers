@@ -19,7 +19,7 @@ func (f fakeTyper) TypeOf(_ context.Context, id string) (engine.PrincipalType, e
 func TestIssueRejectsDelegatorIsAgent(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	o, _ := org.NewStore(pool).CreateOrg(context.Background(), "Acme")
-	sig, _ := NewSigner("base-servers")
+	sig := NewSigner("base-servers", testKeyset(t))
 	svc := NewService(NewStore(pool), sig, fakeTyper{"u1": engine.Human, "ag1": engine.Agent, "ag2": engine.Agent})
 	_, _, err := svc.Issue(context.Background(), IssueInput{
 		AgentID: "ag1", DelegatorID: "ag2", OrgID: o.ID, Scope: []string{"doc.edit"}, TTLSeconds: 300,
@@ -32,7 +32,7 @@ func TestIssueRejectsDelegatorIsAgent(t *testing.T) {
 func TestIssueOKAndRevoke(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	o, _ := org.NewStore(pool).CreateOrg(context.Background(), "Acme")
-	sig, _ := NewSigner("base-servers")
+	sig := NewSigner("base-servers", testKeyset(t))
 	svc := NewService(NewStore(pool), sig, fakeTyper{"u1": engine.Human, "ag1": engine.Agent})
 	tok, id, err := svc.Issue(context.Background(), IssueInput{
 		AgentID: "ag1", DelegatorID: "u1", OrgID: o.ID, Scope: []string{"doc.edit"}, TTLSeconds: 300,
@@ -52,7 +52,7 @@ func TestIssueOKAndRevoke(t *testing.T) {
 func TestIssueRejectsExcessiveTTL(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	o, _ := org.NewStore(pool).CreateOrg(context.Background(), "Acme")
-	sig, _ := NewSigner("base-servers")
+	sig := NewSigner("base-servers", testKeyset(t))
 	svc := NewService(NewStore(pool), sig, fakeTyper{"u1": engine.Human, "ag1": engine.Agent})
 	_, _, err := svc.Issue(context.Background(), IssueInput{
 		AgentID: "ag1", DelegatorID: "u1", OrgID: o.ID, Scope: []string{"doc.edit"}, TTLSeconds: MaxTTLSeconds + 1,

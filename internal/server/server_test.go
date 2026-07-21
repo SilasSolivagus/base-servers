@@ -8,6 +8,7 @@ import (
 
 	"github.com/SilasSolivagus/base-servers/internal/config"
 	"github.com/SilasSolivagus/base-servers/internal/delegation"
+	"github.com/SilasSolivagus/base-servers/internal/signingkey"
 )
 
 func TestHealthz(t *testing.T) {
@@ -45,10 +46,12 @@ type registrarFunc func(*http.ServeMux)
 func (f registrarFunc) Register(mux *http.ServeMux) { f(mux) }
 
 func TestJWKSEndpoint(t *testing.T) {
-	signer, err := delegation.NewSigner("test-issuer")
+	k, err := signingkey.GenerateKey()
 	if err != nil {
-		t.Fatalf("new signer: %v", err)
+		t.Fatalf("new signing key: %v", err)
 	}
+	ks := signingkey.Keyset{Active: *k, All: []signingkey.Key{*k}}
+	signer := delegation.NewSigner("test-issuer", func() signingkey.Keyset { return ks })
 	srv := New(config.Config{HTTPAddr: ":0"}, delegation.NewJWKSHandler(signer))
 	ts := httptest.NewServer(srv.Handler)
 	t.Cleanup(ts.Close)

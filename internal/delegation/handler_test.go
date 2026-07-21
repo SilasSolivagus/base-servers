@@ -16,6 +16,7 @@ import (
 	"github.com/SilasSolivagus/base-servers/internal/engine"
 	"github.com/SilasSolivagus/base-servers/internal/org"
 	"github.com/SilasSolivagus/base-servers/internal/role"
+	"github.com/SilasSolivagus/base-servers/internal/signingkey"
 	"github.com/SilasSolivagus/base-servers/internal/testsupport"
 )
 
@@ -27,10 +28,12 @@ func (f fakeTyper) TypeOf(_ context.Context, id string) (engine.PrincipalType, e
 
 func newTestServer(t *testing.T, pool *pgxpool.Pool, typer fakeTyper) *httptest.Server {
 	t.Helper()
-	sig, err := delegation.NewSigner("base-servers")
+	k, err := signingkey.GenerateKey()
 	if err != nil {
 		t.Fatal(err)
 	}
+	ks := signingkey.Keyset{Active: *k, All: []signingkey.Key{*k}}
+	sig := delegation.NewSigner("base-servers", func() signingkey.Keyset { return ks })
 	st := delegation.NewStore(pool)
 	svc := delegation.NewService(st, sig, typer)
 	checker := delegation.NewChecker(st, sig, authz.NewService(authz.NewStore(pool)))

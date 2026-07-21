@@ -18,7 +18,7 @@ func TestCheckDelegatedAllowWithinDelegatorAndScope(t *testing.T) {
 	rs := role.NewStore(pool)
 	r, _ := rs.CreateRole(ctx, o.ID, "editor", []string{"doc.edit"})
 	_ = rs.AssignRole(ctx, "u1", r.ID, "org", o.ID) // delegator u1 可 doc.edit
-	sig, _ := NewSigner("base-servers")
+	sig := NewSigner("base-servers", testKeyset(t))
 	st := NewStore(pool)
 	chk := NewChecker(st, sig, authz.NewService(authz.NewStore(pool)))
 	// 签一枚:agent ag1 代表 u1,scope=[doc.edit]
@@ -40,7 +40,7 @@ func TestCheckDelegatedDenyWhenDelegatorLacksPerm(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	ctx := context.Background()
 	o, _ := org.NewStore(pool).CreateOrg(ctx, "Acme")
-	sig, _ := NewSigner("base-servers")
+	sig := NewSigner("base-servers", testKeyset(t))
 	st := NewStore(pool)
 	chk := NewChecker(st, sig, authz.NewService(authz.NewStore(pool)))
 	// delegator u2 没有任何角色;scope 含 doc.edit 也不行
@@ -58,7 +58,7 @@ func TestCheckDelegatedDenyAfterRevoke(t *testing.T) {
 	rs := role.NewStore(pool)
 	r, _ := rs.CreateRole(ctx, o.ID, "editor", []string{"doc.edit"})
 	_ = rs.AssignRole(ctx, "u1", r.ID, "org", o.ID)
-	sig, _ := NewSigner("base-servers")
+	sig := NewSigner("base-servers", testKeyset(t))
 	st := NewStore(pool)
 	chk := NewChecker(st, sig, authz.NewService(authz.NewStore(pool)))
 	tok, id := issueTestToken(t, st, sig, "ag1", "u1", o.ID, []string{"doc.edit"})
@@ -80,7 +80,7 @@ func TestCheckDelegatedIgnoresAgentOwnRoles(t *testing.T) {
 	// agent ag1 有自己的组织角色(doc.edit),但 delegator u2 没有任何角色
 	r, _ := rs.CreateRole(ctx, o.ID, "editor", []string{"doc.edit"})
 	_ = rs.AssignRole(ctx, "ag1", r.ID, "org", o.ID)
-	sig, _ := NewSigner("base-servers")
+	sig := NewSigner("base-servers", testKeyset(t))
 	st := NewStore(pool)
 	chk := NewChecker(st, sig, authz.NewService(authz.NewStore(pool)))
 	tok, _ := issueTestToken(t, st, sig, "ag1", "u2", o.ID, []string{"doc.edit"})
@@ -101,7 +101,7 @@ func TestCheckDelegatedNarrowsWhenDelegatorRoleRevoked(t *testing.T) {
 	rs := role.NewStore(pool)
 	r, _ := rs.CreateRole(ctx, o.ID, "editor", []string{"doc.edit"})
 	_ = rs.AssignRole(ctx, "u1", r.ID, "org", o.ID)
-	sig, _ := NewSigner("base-servers")
+	sig := NewSigner("base-servers", testKeyset(t))
 	st := NewStore(pool)
 	chk := NewChecker(st, sig, authz.NewService(authz.NewStore(pool)))
 	tok, _ := issueTestToken(t, st, sig, "ag1", "u1", o.ID, []string{"doc.edit"})

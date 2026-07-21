@@ -14,6 +14,7 @@ import (
 	"github.com/SilasSolivagus/base-servers/internal/principal"
 	"github.com/SilasSolivagus/base-servers/internal/role"
 	"github.com/SilasSolivagus/base-servers/internal/server"
+	"github.com/SilasSolivagus/base-servers/internal/signingkey"
 )
 
 func main() {
@@ -42,10 +43,17 @@ func main() {
 	authzStore := authz.NewStore(pool)
 	authzSvc := authz.NewService(authzStore)
 
-	signer, err := delegation.NewSigner(cfg.DelegationIssuer)
+	// TODO(signingkey wiring task): replace with a signingkey.Manager-backed keyset
+	// (persisted key, KEK from env, EnsureActive at startup) so signing keys survive
+	// restarts and are shared across replicas. For now this preserves the prior
+	// single-ephemeral-key-per-process behavior, adapted to the new keyset-driven
+	// NewSigner signature.
+	signingK, err := signingkey.GenerateKey()
 	if err != nil {
 		log.Fatalf("delegation signer: %v", err)
 	}
+	ks := signingkey.Keyset{Active: *signingK, All: []signingkey.Key{*signingK}}
+	signer := delegation.NewSigner(cfg.DelegationIssuer, func() signingkey.Keyset { return ks })
 	delStore := delegation.NewStore(pool)
 	delSvc := delegation.NewService(delStore, signer, svc)
 	delChecker := delegation.NewChecker(delStore, signer, authzSvc)
