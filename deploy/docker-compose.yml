@@ -47,6 +47,8 @@ services:
       DELEGATION_ISSUER: http://localhost:8081
       OIDC_LOGIN_REDIRECT_URIS: ${OIDC_LOGIN_REDIRECT_URIS:-http://localhost:8088/callback}
       BS_SERVICE_CLIENT_SECRET: ${BS_SERVICE_CLIENT_SECRET:?set BS_SERVICE_CLIENT_SECRET}
+      BS_PUBLIC_ISSUER: ${BS_PUBLIC_URL:-http://localhost:8088}/oidc/realms/base-servers
+      BS_ROOT_TOKEN: ${BS_ROOT_TOKEN:?set BS_ROOT_TOKEN for bootstrap}
     ports: ["8081:8081"]
     depends_on:
       postgres:
