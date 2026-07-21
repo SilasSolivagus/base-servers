@@ -18,6 +18,8 @@ type Config struct {
 	OIDCLoginRedirectURIs   []string
 	OIDCServiceClientID     string
 	OIDCServiceClientSecret string
+	PublicIssuer            string // BS_PUBLIC_ISSUER,如 http://localhost:8088/oidc/realms/base-servers
+	RootToken               string // BS_ROOT_TOKEN(bootstrap break-glass)
 }
 
 func env(key, def string) string {
@@ -40,6 +42,8 @@ func Load() (Config, error) {
 		OIDCLoginRedirectURIs:   splitCSV(os.Getenv("OIDC_LOGIN_REDIRECT_URIS")),
 		OIDCServiceClientID:     env("OIDC_SERVICE_CLIENT_ID", "base-servers-service"),
 		OIDCServiceClientSecret: os.Getenv("BS_SERVICE_CLIENT_SECRET"),
+		PublicIssuer:            os.Getenv("BS_PUBLIC_ISSUER"),
+		RootToken:               os.Getenv("BS_ROOT_TOKEN"),
 	}
 	if c.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")
