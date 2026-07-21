@@ -12,8 +12,23 @@ import (
 	dbfs "github.com/SilasSolivagus/base-servers/db"
 )
 
+// advisoryLockKey 是 pg_advisory_lock 用的固定任意常量,用于在多副本并发启动时
+// 串行化 Apply(会话级锁,必须在同一条连接上加锁/解锁)。
+const advisoryLockKey int64 = 78216340912
+
 func Apply(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx,
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, advisoryLockKey); err != nil {
+		return err
+	}
+	defer conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, advisoryLockKey)
+
+	if _, err := conn.Exec(ctx,
 		`CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
 	); err != nil {
 		return fmt.Errorf("ensure ledger: %w", err)
@@ -33,7 +48,7 @@ func Apply(ctx context.Context, pool *pgxpool.Pool) error {
 
 	for _, name := range names {
 		var exists bool
-		if err := pool.QueryRow(ctx,
+		if err := conn.QueryRow(ctx,
 			`SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = $1)`, name,
 		).Scan(&exists); err != nil {
 			return err
@@ -49,7 +64,7 @@ func Apply(ctx context.Context, pool *pgxpool.Pool) error {
 		if up == "" {
 			return fmt.Errorf("migration %s has no +goose Up section", name)
 		}
-		tx, err := pool.Begin(ctx)
+		tx, err := conn.Begin(ctx)
 		if err != nil {
 			return err
 		}
