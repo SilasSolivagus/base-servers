@@ -79,17 +79,19 @@ Everything above is covered by tests that spin up **real** Keycloak + Postgres c
 
 ## 🔐 OIDC front-door
 
-`deploy/docker-compose.yml` ships a thin [Caddy](https://caddyserver.com) gateway (`caddy` service, public port `8088`) so the identity engine is never exposed under its own hostname — everything sits behind **one public domain**:
+`deploy/docker-compose.yml` ships a thin [Caddy](https://caddyserver.com) gateway (`caddy` service, public port `8088`) so the public **issuer, discovery, and `jwks_uri` URLs** are pinned to one public domain rather than Keycloak's own hostname:
 
-- `${BS_PUBLIC_URL}/oidc/*` → proxied (prefix stripped) to Keycloak. `KC_HOSTNAME` is set to `${BS_PUBLIC_URL}/oidc`, so Keycloak itself emits `iss`, discovery, and `jwks_uri` under that public, neutral `/oidc` path — not `keycloak:8080`. The public issuer is `<BS_PUBLIC_URL>/oidc/realms/base-servers`.
+- `${BS_PUBLIC_URL}/oidc/*` → proxied (prefix stripped) to Keycloak. `KC_HOSTNAME` is set to `${BS_PUBLIC_URL}/oidc`, so Keycloak itself emits `iss`, discovery, and `jwks_uri` under that public, neutral `/oidc` path — not `keycloak:8080`. The public issuer is `<BS_PUBLIC_URL>/oidc/realms/base-servers`. Note `BS_PUBLIC_URL` must have **no trailing slash** — it's concatenated directly with `/oidc`.
 - Everything else → proxied to `base-servers`.
 
 This means base-servers never re-signs or proxies login tokens — the gateway is a compose-layer routing concern, not something the Go process does. If the identity engine is ever swapped out, the issuer stays pinned to the base-servers domain.
 
+**Dev-vs-prod note:** the compose file also publishes Keycloak's own port `8080:8080` directly on the host, and the realm is created with `sslRequired: none` — both are dev conveniences so you can hit Keycloak's admin console without the gateway. For a real deployment, drop the `8080:8080` port mapping (Keycloak should only be reachable via the Caddy gateway) and raise `sslRequired` once TLS is terminated at the gateway.
+
 Two OIDC clients are provisioned at startup (`EnsureProvisioned`, idempotent):
 
-- **`base-servers-login`** — public client, PKCE (S256), authorization-code flow, for humans/UIs. Redirect URIs come from `OIDC_LOGIN_REDIRECT_URIS` (comma-separated; defaults to `http://localhost:8088/callback`). Dynamic, per-app redirect-URI registration (an API instead of a static env list) is deferred to a later phase.
-- **`base-servers-service`** — confidential client, client-credentials flow, for service-to-service calls. Its secret is supplied via `BS_SERVICE_CLIENT_SECRET` (required; the process fails closed at startup if unset).
+- **`base-servers-login`** — public client, PKCE (S256), authorization-code flow, for humans/UIs. Redirect URIs come from `OIDC_LOGIN_REDIRECT_URIS` (comma-separated; defaults to `http://localhost:8088/callback`). This env list is the source of truth: `EnsureProvisioned` re-asserts it on every restart, so any redirect URI added by hand in the Keycloak console is non-durable and will be overwritten. Dynamic, per-app redirect-URI registration (an API instead of a static env list) is deferred to a later phase.
+- **`base-servers-service`** — confidential client, client-credentials flow only (`directAccessGrantsEnabled: false`, no ROPC password grant), least-privilege scope (`fullScopeAllowed: false`), for service-to-service calls. Its secret is supplied via `BS_SERVICE_CLIENT_SECRET` (required; the process fails closed at startup if unset).
 
 ## 🗺 Roadmap
 

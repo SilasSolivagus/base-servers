@@ -51,11 +51,13 @@ func (a *Adapter) ensureClients(ctx context.Context, token string) error {
 	}
 	// 服务 client:confidential + client-credentials(service accounts)
 	service := gocloak.Client{
-		ClientID:               p(a.cfg.ServiceClientID),
-		PublicClient:           p(false),
-		StandardFlowEnabled:    p(false),
-		ServiceAccountsEnabled: p(true),
-		Secret:                 p(a.cfg.ServiceClientSecret),
+		ClientID:                  p(a.cfg.ServiceClientID),
+		PublicClient:              p(false),
+		StandardFlowEnabled:       p(false),
+		DirectAccessGrantsEnabled: p(false), // 仅 client-credentials,禁 ROPC 密码授权
+		ServiceAccountsEnabled:    p(true),
+		FullScopeAllowed:          p(false), // 最小权限:token 不携带全部 realm 角色,授权由 base-servers 自行处理
+		Secret:                    p(a.cfg.ServiceClientSecret),
 	}
 	return a.upsertClient(ctx, token, service)
 }
@@ -81,6 +83,7 @@ func (a *Adapter) upsertClient(ctx context.Context, token string, want gocloak.C
 
 type ClientStatus struct {
 	Public, StandardFlow, ServiceAccounts bool
+	DirectAccessGrants                    bool
 	PKCE                                  string
 	RedirectURIs                          []string
 }
@@ -119,6 +122,9 @@ func (a *Adapter) clientStatus(ctx context.Context, token, clientID string) (Cli
 	}
 	if c.ServiceAccountsEnabled != nil {
 		out.ServiceAccounts = *c.ServiceAccountsEnabled
+	}
+	if c.DirectAccessGrantsEnabled != nil {
+		out.DirectAccessGrants = *c.DirectAccessGrantsEnabled
 	}
 	if c.RedirectURIs != nil {
 		out.RedirectURIs = *c.RedirectURIs

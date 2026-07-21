@@ -54,4 +54,7 @@ func assertRealmProvisioned(t *testing.T, a *keycloak.Adapter, ctx context.Conte
 	if st.ServiceClient.Public || !st.ServiceClient.ServiceAccounts {
 		t.Fatalf("service client must be confidential + service-accounts: %+v", st.ServiceClient)
 	}
+	if st.ServiceClient.DirectAccessGrants {
+		t.Fatalf("service client must reject direct-access-grants (ROPC password grant): %+v", st.ServiceClient)
+	}
 }
