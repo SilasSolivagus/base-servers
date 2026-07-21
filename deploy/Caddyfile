@@ -1,0 +1,9 @@
+# 单一公共前门:/oidc/* 转 Keycloak(中性路径),其余转 base-servers。
+:80 {
+	handle_path /oidc/* {
+		reverse_proxy keycloak:8080
+	}
+	handle {
+		reverse_proxy base-servers:8081
+	}
+}

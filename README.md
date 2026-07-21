@@ -77,6 +77,20 @@ curl -X POST localhost:8081/baseservers.v1.PrincipalService/CreatePrincipal \
 
 Everything above is covered by tests that spin up **real** Keycloak + Postgres containers — no mocks.
 
+## 🔐 OIDC front-door
+
+`deploy/docker-compose.yml` ships a thin [Caddy](https://caddyserver.com) gateway (`caddy` service, public port `8088`) so the identity engine is never exposed under its own hostname — everything sits behind **one public domain**:
+
+- `${BS_PUBLIC_URL}/oidc/*` → proxied (prefix stripped) to Keycloak. `KC_HOSTNAME` is set to `${BS_PUBLIC_URL}/oidc`, so Keycloak itself emits `iss`, discovery, and `jwks_uri` under that public, neutral `/oidc` path — not `keycloak:8080`. The public issuer is `<BS_PUBLIC_URL>/oidc/realms/base-servers`.
+- Everything else → proxied to `base-servers`.
+
+This means base-servers never re-signs or proxies login tokens — the gateway is a compose-layer routing concern, not something the Go process does. If the identity engine is ever swapped out, the issuer stays pinned to the base-servers domain.
+
+Two OIDC clients are provisioned at startup (`EnsureProvisioned`, idempotent):
+
+- **`base-servers-login`** — public client, PKCE (S256), authorization-code flow, for humans/UIs. Redirect URIs come from `OIDC_LOGIN_REDIRECT_URIS` (comma-separated; defaults to `http://localhost:8088/callback`). Dynamic, per-app redirect-URI registration (an API instead of a static env list) is deferred to a later phase.
+- **`base-servers-service`** — confidential client, client-credentials flow, for service-to-service calls. Its secret is supplied via `BS_SERVICE_CLIENT_SECRET` (required; the process fails closed at startup if unset).
+
 ## 🗺 Roadmap
 
 base-servers is scoped as an onion — a small mandatory core, then optional rings. **Ring 0** (identity + org + authz) is the first sub-project, delivered in four phases:
@@ -86,7 +100,7 @@ base-servers is scoped as an onion — a small mandatory core, then optional rin
 | **1 · Foundation** | Go service, pluggable identity-engine adapter, three-type principals, Postgres store, Connect RPC API | ✅ **Shipped** |
 | **2 · Org & Permissions** | Organizations, teams, membership, RBAC roles, `check(subject, action, resource)`, resource ownership | ✅ **Shipped** |
 | **3 · Agent Delegation** *(the headline)* | Token-exchange narrow tokens, effective-perms ≤ delegator, short-TTL + denylist revocation, DPoP sender-binding | ✅ **Shipped** |
-| **4 · Front-door & Delivery** | OIDC-fronted login + SSO, headless admin API, multi-tenant isolation, one-command deploy | ⏳ Next |
+| **4 · Front-door & Delivery** | OIDC-fronted login + SSO, headless admin API, multi-tenant isolation, one-command deploy | 🔶 In progress — login front-door (public issuer + Caddy gateway) ✅ delivered; caller auth / multi-tenant isolation next |
 
 Outer rings (notifications, audit, billing, webhooks, agent-to-agent messaging …) come later, each as its own module.
 
