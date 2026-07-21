@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -21,6 +22,14 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "rotate-signing-key" {
+		runRotate()
+		return
+	}
+	runServer()
+}
+
+func runServer() {
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("config: %v", err)
@@ -91,6 +100,37 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("serve: %v", err)
 	}
+}
+
+func runRotate() {
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+	kek, err := signingkey.KEKFromEnv()
+	if err != nil {
+		log.Fatalf("signing KEK: %v", err)
+	}
+	cipher, err := signingkey.NewCipher(kek)
+	if err != nil {
+		log.Fatalf("signing cipher: %v", err)
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("db: %v", err)
+	}
+	defer pool.Close()
+
+	mgr := signingkey.NewManager(signingkey.NewStore(pool), cipher)
+	if err := mgr.EnsureActive(ctx); err != nil {
+		log.Fatalf("signing key: %v", err)
+	}
+	k, err := mgr.Rotate(ctx)
+	if err != nil {
+		log.Fatalf("rotate: %v", err)
+	}
+	log.Printf("rotated: new active signing key kid=%s (previous key retiring)", k.Kid)
 }
 
 func keycloakReachable(ctx context.Context, baseURL, realm string) error {
