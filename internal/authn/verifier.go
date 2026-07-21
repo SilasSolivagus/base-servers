@@ -20,9 +20,10 @@ type Verifier struct {
 	allowedAzp map[string]bool
 	http       *http.Client
 
-	mu      sync.RWMutex
-	keys    map[string]*rsa.PublicKey // kid → key
-	fetched time.Time
+	mu       sync.RWMutex
+	keys     map[string]*rsa.PublicKey // kid → key
+	fetched  time.Time
+	cacheTTL time.Duration
 }
 
 func NewVerifier(jwksURL, issuer string, allowedAzp []string) *Verifier {
@@ -32,8 +33,9 @@ func NewVerifier(jwksURL, issuer string, allowedAzp []string) *Verifier {
 	}
 	return &Verifier{
 		jwksURL: jwksURL, issuer: issuer, allowedAzp: m,
-		http: &http.Client{Timeout: 5 * time.Second},
-		keys: map[string]*rsa.PublicKey{},
+		http:     &http.Client{Timeout: 5 * time.Second},
+		keys:     map[string]*rsa.PublicKey{},
+		cacheTTL: 5 * time.Minute,
 	}
 }
 
@@ -85,8 +87,9 @@ func (v *Verifier) Verify(ctx context.Context, bearer string) (Caller, error) {
 func (v *Verifier) keyFor(ctx context.Context, kid string) (*rsa.PublicKey, error) {
 	v.mu.RLock()
 	k := v.keys[kid]
+	fresh := k != nil && time.Since(v.fetched) <= v.cacheTTL
 	v.mu.RUnlock()
-	if k != nil {
+	if fresh {
 		return k, nil
 	}
 	if err := v.refresh(ctx); err != nil {
