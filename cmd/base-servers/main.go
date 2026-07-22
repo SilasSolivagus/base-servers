@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"connectrpc.com/connect"
@@ -52,7 +54,9 @@ func runServer() {
 		log.Fatalf("signing cipher: %v", err)
 	}
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("db: %v", err)
@@ -104,9 +108,13 @@ func runServer() {
 	authzStore := authz.NewStore(pool)
 	authzSvc := authz.NewService(authzStore)
 
-	// TODO(Task 8): wire a store-backed AsyncRecorder + start its Run loop;
-	// this temporary recorder just makes the handler constructors compile.
-	auditRec := audit.NewRecorder(nil, 1)
+	auditStore := audit.NewStore(pool)
+	auditRec := audit.NewRecorder(auditStore, cfg.AuditBuffer)
+	auditDone := make(chan struct{})
+	go func() {
+		auditRec.Run(ctx)
+		close(auditDone)
+	}()
 
 	signer := delegation.NewSigner(cfg.DelegationIssuer, keyMgr.Keyset)
 	delStore := delegation.NewStore(pool)
@@ -127,11 +135,23 @@ func runServer() {
 		authz.NewHandler(authzSvc, authzStore, orgStore, auditRec),
 		delegation.NewHandler(delSvc, delChecker, auditRec),
 		delegation.NewJWKSHandler(signer),
+		audit.NewHandler(auditStore, orgStore),
 	)
-	log.Printf("base-servers listening on %s", cfg.HTTPAddr)
-	if err := srv.ListenAndServe(); err != nil {
-		log.Fatalf("serve: %v", err)
+
+	go func() {
+		log.Printf("base-servers listening on %s", cfg.HTTPAddr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("serve: %v", err)
+		}
+	}()
+
+	<-ctx.Done() // SIGINT/SIGTERM → 触发 HTTP 优雅关闭 + 审计缓冲区排干
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("shutdown: %v", err)
 	}
+	<-auditDone // 等审计记录器排干残余事件,再放 pool.Close() 执行
 }
 
 func runRotate() {

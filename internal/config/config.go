@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -20,6 +21,7 @@ type Config struct {
 	OIDCServiceClientSecret string
 	PublicIssuer            string // BS_PUBLIC_ISSUER,如 http://localhost:8088/oidc/realms/base-servers
 	RootToken               string // BS_ROOT_TOKEN(bootstrap break-glass)
+	AuditBuffer             int    // AUDIT_BUFFER:异步审计记录器缓冲区大小
 }
 
 func env(key, def string) string {
@@ -27,6 +29,18 @@ func env(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func envInt(key string, def int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return def
+	}
+	return n
 }
 
 func Load() (Config, error) {
@@ -44,6 +58,7 @@ func Load() (Config, error) {
 		OIDCServiceClientSecret: os.Getenv("BS_SERVICE_CLIENT_SECRET"),
 		PublicIssuer:            os.Getenv("BS_PUBLIC_ISSUER"),
 		RootToken:               os.Getenv("BS_ROOT_TOKEN"),
+		AuditBuffer:             envInt("AUDIT_BUFFER", 4096),
 	}
 	if c.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")
