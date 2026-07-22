@@ -73,7 +73,7 @@ func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventPara
 const listAuditEvents = `-- name: ListAuditEvents :many
 SELECT seq, ts, actor_id, actor_type, system_admin, action, target_type, target_id, org_id, outcome, detail
 FROM audit_events
-WHERE ($1::text = '' OR org_id = $1)
+WHERE chain = $1
   AND ($2::text = '' OR actor_id = $2)
   AND ($3::text = '' OR action = $3)
   AND ($4::text = '' OR outcome = $4)
@@ -84,7 +84,7 @@ LIMIT $8
 `
 
 type ListAuditEventsParams struct {
-	Column1 string
+	Chain   string
 	Column2 string
 	Column3 string
 	Column4 string
@@ -110,7 +110,7 @@ type ListAuditEventsRow struct {
 
 func (q *Queries) ListAuditEvents(ctx context.Context, arg ListAuditEventsParams) ([]ListAuditEventsRow, error) {
 	rows, err := q.db.Query(ctx, listAuditEvents,
-		arg.Column1,
+		arg.Chain,
 		arg.Column2,
 		arg.Column3,
 		arg.Column4,

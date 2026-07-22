@@ -42,7 +42,7 @@ func (h *Handler) List(ctx context.Context, req *connect.Request[v1.ListRequest]
 		return nil, err
 	}
 	f := ListFilter{
-		OrgID: req.Msg.OrgId, ActorID: req.Msg.ActorId, Action: req.Msg.Action, Outcome: req.Msg.Outcome,
+		Chain: ChainOf(req.Msg.OrgId), ActorID: req.Msg.ActorId, Action: req.Msg.Action, Outcome: req.Msg.Outcome,
 		Limit: req.Msg.PageSize, AfterSeq: req.Msg.AfterSeq,
 	}
 	if req.Msg.From != "" {

@@ -21,7 +21,7 @@ func TestRecorderPersistsAsync(t *testing.T) {
 	// 轮询等异步排干
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		got, _ := s.List(context.Background(), audit.ListFilter{OrgID: "o1", Limit: 100})
+		got, _ := s.List(context.Background(), audit.ListFilter{Chain: "o1", Limit: 100})
 		if len(got) == 20 {
 			cancel()
 			return
@@ -70,8 +70,8 @@ func TestRecorderDrainsMultipleChainsAndVerifies(t *testing.T) {
 
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		gotA, _ := s.List(context.Background(), audit.ListFilter{OrgID: "orgA", Limit: 100})
-		gotB, _ := s.List(context.Background(), audit.ListFilter{OrgID: "orgB", Limit: 100})
+		gotA, _ := s.List(context.Background(), audit.ListFilter{Chain: "orgA", Limit: 100})
+		gotB, _ := s.List(context.Background(), audit.ListFilter{Chain: "orgB", Limit: 100})
 		if len(gotA) == perOrg && len(gotB) == perOrg {
 			cancel()
 			okA, badSeqA, err := s.Verify(context.Background(), "orgA")
@@ -123,7 +123,7 @@ func TestRecorderFlushesOnShutdown(t *testing.T) {
 		t.Fatal("Run did not return after ctx cancel")
 	}
 
-	got, err := s.List(context.Background(), audit.ListFilter{OrgID: "orgS", Limit: 100})
+	got, err := s.List(context.Background(), audit.ListFilter{Chain: "orgS", Limit: 100})
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}

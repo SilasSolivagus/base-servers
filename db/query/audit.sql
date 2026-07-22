@@ -13,7 +13,7 @@ FROM audit_events WHERE chain = $1 ORDER BY seq;
 -- name: ListAuditEvents :many
 SELECT seq, ts, actor_id, actor_type, system_admin, action, target_type, target_id, org_id, outcome, detail
 FROM audit_events
-WHERE ($1::text = '' OR org_id = $1)
+WHERE chain = $1
   AND ($2::text = '' OR actor_id = $2)
   AND ($3::text = '' OR action = $3)
   AND ($4::text = '' OR outcome = $4)

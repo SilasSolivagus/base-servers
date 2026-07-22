@@ -104,7 +104,7 @@ type StoredEvent struct {
 }
 
 type ListFilter struct {
-	OrgID, ActorID, Action, Outcome string
+	Chain, ActorID, Action, Outcome string
 	From, To                        time.Time
 	Limit                           int32
 	AfterSeq                        int64
@@ -123,7 +123,7 @@ func (s *Store) List(ctx context.Context, f ListFilter) ([]StoredEvent, error) {
 		to = time.Now().Add(time.Hour)
 	}
 	rows, err := s.q.ListAuditEvents(ctx, db.ListAuditEventsParams{
-		Column1: f.OrgID, Column2: f.ActorID, Column3: f.Action, Column4: f.Outcome,
+		Chain: f.Chain, Column2: f.ActorID, Column3: f.Action, Column4: f.Outcome,
 		Ts: pgtype.Timestamptz{Time: from, Valid: true}, Ts_2: pgtype.Timestamptz{Time: to, Valid: true},
 		Seq: f.AfterSeq, Limit: f.Limit,
 	})

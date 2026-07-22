@@ -24,7 +24,7 @@ func TestStoreAppendChainsSequentially(t *testing.T) {
 	if err := s.Append(ctx, "o1", []audit.Event{ev("c", "o1")}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.List(ctx, audit.ListFilter{OrgID: "o1", Limit: 10})
+	got, err := s.List(ctx, audit.ListFilter{Chain: "o1", Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestStoreAppendConcurrentSameChainNoGap(t *testing.T) {
 		go func() { defer wg.Done(); _ = s.Append(ctx, "o1", []audit.Event{ev("x", "o1")}) }()
 	}
 	wg.Wait()
-	got, _ := s.List(ctx, audit.ListFilter{OrgID: "o1", Limit: 100})
+	got, _ := s.List(ctx, audit.ListFilter{Chain: "o1", Limit: 100})
 	if len(got) != 8 {
 		t.Fatalf("want 8, got %d (seq gap/collision under concurrency)", len(got))
 	}
