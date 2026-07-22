@@ -62,8 +62,13 @@ func TestVerifyDetectsTamper(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("intact chain must verify: ok=%v broken=%d err=%v", ok, broken, err)
 	}
-	// 绕过应用直接篡改第 3 条 → Verify 必须抓出
-	if _, err := pool.Exec(ctx, `UPDATE audit_events SET outcome='tampered' WHERE chain='o1' AND seq=3`); err != nil {
+	// 模拟"拿到 superuser 的越权攻击者":append-only 触发器挡住普通改动,只有
+	// superuser 显式 SET session_replication_role=replica 才能绕过触发器直改第 3 条;
+	// 哈希链 Verify 仍须抓出——这是与体系结构无关的最后一道防线。三条语句走同一次
+	// Exec(simple protocol)在同一连接上执行,末尾复位以免污染连接池。
+	if _, err := pool.Exec(ctx, `SET session_replication_role = replica;
+		UPDATE audit_events SET outcome='tampered' WHERE chain='o1' AND seq=3;
+		SET session_replication_role = DEFAULT`); err != nil {
 		t.Fatal(err)
 	}
 	ok, broken, err = s.Verify(ctx, "o1")
@@ -72,5 +77,27 @@ func TestVerifyDetectsTamper(t *testing.T) {
 	}
 	if ok || broken != 3 {
 		t.Fatalf("tamper at seq 3 must be detected: ok=%v broken=%d", ok, broken)
+	}
+}
+
+// TestAuditEventsRejectsMutation:append-only 触发器对普通(不绕过)UPDATE/DELETE
+// 一律拒绝,即便连的是 owner 角色——这是 DB 层不可变的强制层(design §4.3 / §7)。
+func TestAuditEventsRejectsMutation(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	s := audit.NewStore(pool)
+	ctx := context.Background()
+	if err := s.Append(ctx, "o1", []audit.Event{ev("a", "o1")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE audit_events SET outcome='x' WHERE chain='o1' AND seq=1`); err == nil {
+		t.Fatal("UPDATE on audit_events must be rejected by the append-only trigger")
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM audit_events WHERE chain='o1' AND seq=1`); err == nil {
+		t.Fatal("DELETE on audit_events must be rejected by the append-only trigger")
+	}
+	// 行仍在、链仍可验。
+	ok, _, err := s.Verify(ctx, "o1")
+	if err != nil || !ok {
+		t.Fatalf("chain must remain intact and verifiable after rejected mutations: ok=%v err=%v", ok, err)
 	}
 }
