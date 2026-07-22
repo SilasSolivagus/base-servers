@@ -10,6 +10,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/SilasSolivagus/base-servers/internal/audit"
 	"github.com/SilasSolivagus/base-servers/internal/authn"
 	"github.com/SilasSolivagus/base-servers/internal/authz"
 	"github.com/SilasSolivagus/base-servers/internal/config"
@@ -103,6 +104,10 @@ func runServer() {
 	authzStore := authz.NewStore(pool)
 	authzSvc := authz.NewService(authzStore)
 
+	// TODO(Task 8): wire a store-backed AsyncRecorder + start its Run loop;
+	// this temporary recorder just makes the handler constructors compile.
+	auditRec := audit.NewRecorder(nil, 1)
+
 	signer := delegation.NewSigner(cfg.DelegationIssuer, keyMgr.Keyset)
 	delStore := delegation.NewStore(pool)
 	delSvc := delegation.NewService(delStore, signer, svc)
@@ -116,10 +121,10 @@ func runServer() {
 	}
 
 	srv := server.New(cfg, ready, []connect.HandlerOption{authInterceptor},
-		principal.NewHandler(svc),
-		org.NewHandler(orgSvc, orgStore),
-		role.NewHandler(roleSvc, orgStore),
-		authz.NewHandler(authzSvc, authzStore, orgStore),
+		principal.NewHandler(svc, auditRec),
+		org.NewHandler(orgSvc, orgStore, auditRec),
+		role.NewHandler(roleSvc, orgStore, auditRec),
+		authz.NewHandler(authzSvc, authzStore, orgStore, auditRec),
 		delegation.NewHandler(delSvc, delChecker),
 		delegation.NewJWKSHandler(signer),
 	)

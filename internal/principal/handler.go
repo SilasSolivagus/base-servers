@@ -9,13 +9,17 @@ import (
 
 	v1 "github.com/SilasSolivagus/base-servers/gen/baseservers/v1"
 	"github.com/SilasSolivagus/base-servers/gen/baseservers/v1/baseserversv1connect"
+	"github.com/SilasSolivagus/base-servers/internal/audit"
 	"github.com/SilasSolivagus/base-servers/internal/authn"
 	"github.com/SilasSolivagus/base-servers/internal/engine"
 )
 
-type Handler struct{ svc *Service }
+type Handler struct {
+	svc *Service
+	rec audit.Recorder
+}
 
-func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
+func NewHandler(svc *Service, rec audit.Recorder) *Handler { return &Handler{svc: svc, rec: rec} }
 
 func (h *Handler) Register(mux *http.ServeMux, opts ...connect.HandlerOption) {
 	path, hdl := baseserversv1connect.NewPrincipalServiceHandler(h, opts...)
@@ -58,6 +62,10 @@ func (h *Handler) CreatePrincipal(ctx context.Context, req *connect.Request[v1.C
 		}
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+	aid, at, sa := audit.Actor(ctx)
+	h.rec.Record(ctx, audit.Event{ActorID: aid, ActorType: at, SystemAdmin: sa,
+		Action: "principal.create", TargetType: "principal", TargetID: p.ID, OrgID: "",
+		Outcome: audit.OutcomeSuccess, Detail: map[string]string{"display_name": p.DisplayName}})
 	return connect.NewResponse(&v1.CreatePrincipalResponse{Principal: toProto(p)}), nil
 }
 

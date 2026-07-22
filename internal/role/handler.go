@@ -10,16 +10,18 @@ import (
 
 	v1 "github.com/SilasSolivagus/base-servers/gen/baseservers/v1"
 	"github.com/SilasSolivagus/base-servers/gen/baseservers/v1/baseserversv1connect"
+	"github.com/SilasSolivagus/base-servers/internal/audit"
 	"github.com/SilasSolivagus/base-servers/internal/authn"
 )
 
 type Handler struct {
 	svc     *Service
 	members authn.MemberChecker
+	rec     audit.Recorder
 }
 
-func NewHandler(svc *Service, members authn.MemberChecker) *Handler {
-	return &Handler{svc: svc, members: members}
+func NewHandler(svc *Service, members authn.MemberChecker, rec audit.Recorder) *Handler {
+	return &Handler{svc: svc, members: members, rec: rec}
 }
 
 func (h *Handler) Register(mux *http.ServeMux, opts ...connect.HandlerOption) {
@@ -42,6 +44,10 @@ func (h *Handler) CreateRole(ctx context.Context, req *connect.Request[v1.Create
 	if err != nil {
 		return nil, code(err)
 	}
+	aid, at, sa := audit.Actor(ctx)
+	h.rec.Record(ctx, audit.Event{ActorID: aid, ActorType: at, SystemAdmin: sa,
+		Action: "role.create", TargetType: "role", TargetID: r.ID, OrgID: req.Msg.OrgId,
+		Outcome: audit.OutcomeSuccess, Detail: map[string]string{"name": r.Name}})
 	return connect.NewResponse(&v1.CreateRoleResponse{
 		Role: &v1.Role{Id: r.ID, OrgId: r.OrgID, Name: r.Name, Permissions: r.Permissions},
 	}), nil
@@ -66,5 +72,9 @@ func (h *Handler) AssignRole(ctx context.Context, req *connect.Request[v1.Assign
 	if err := h.svc.AssignRole(ctx, req.Msg.PrincipalId, req.Msg.RoleId, req.Msg.ScopeType, req.Msg.ScopeId); err != nil {
 		return nil, code(err)
 	}
+	aid, at, sa := audit.Actor(ctx)
+	h.rec.Record(ctx, audit.Event{ActorID: aid, ActorType: at, SystemAdmin: sa,
+		Action: "role.assign", TargetType: "principal", TargetID: req.Msg.PrincipalId, OrgID: orgID,
+		Outcome: audit.OutcomeSuccess, Detail: map[string]string{"role_id": req.Msg.RoleId}})
 	return connect.NewResponse(&v1.AssignRoleResponse{}), nil
 }

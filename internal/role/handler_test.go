@@ -10,6 +10,7 @@ import (
 
 	v1 "github.com/SilasSolivagus/base-servers/gen/baseservers/v1"
 	"github.com/SilasSolivagus/base-servers/gen/baseservers/v1/baseserversv1connect"
+	"github.com/SilasSolivagus/base-servers/internal/audit"
 	"github.com/SilasSolivagus/base-servers/internal/authn"
 	"github.com/SilasSolivagus/base-servers/internal/org"
 	"github.com/SilasSolivagus/base-servers/internal/role"
@@ -23,7 +24,7 @@ func TestRoleHandlerCreateAndAssign(t *testing.T) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	role.NewHandler(role.NewService(role.NewStore(pool)), org.NewStore(pool)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	role.NewHandler(role.NewService(role.NewStore(pool)), org.NewStore(pool), audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
@@ -45,7 +46,7 @@ func TestRoleHandlerCreateAndAssign(t *testing.T) {
 func TestRoleHandlerRejectsBadScope(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	mux := http.NewServeMux()
-	role.NewHandler(role.NewService(role.NewStore(pool)), org.NewStore(pool)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	role.NewHandler(role.NewService(role.NewStore(pool)), org.NewStore(pool), audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	c := baseserversv1connect.NewRoleServiceClient(http.DefaultClient, srv.URL, testsupport.ClientOpts()...)
@@ -61,7 +62,7 @@ func TestRoleHandlerRejectsBadScope(t *testing.T) {
 func TestRoleHandlerCreateRoleRequiresMembership(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	orgStore := org.NewStore(pool)
-	h := role.NewHandler(role.NewService(role.NewStore(pool)), orgStore)
+	h := role.NewHandler(role.NewService(role.NewStore(pool)), orgStore, audit.NewRecorder(nil, 1))
 	ctx := context.Background()
 
 	orgA, err := orgStore.CreateOrg(ctx, "Tenant A")
@@ -98,7 +99,7 @@ func TestRoleHandlerAssignRoleRequiresMembership(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	orgStore := org.NewStore(pool)
 	roleStore := role.NewStore(pool)
-	h := role.NewHandler(role.NewService(roleStore), orgStore)
+	h := role.NewHandler(role.NewService(roleStore), orgStore, audit.NewRecorder(nil, 1))
 	ctx := context.Background()
 
 	orgA, err := orgStore.CreateOrg(ctx, "Tenant A")

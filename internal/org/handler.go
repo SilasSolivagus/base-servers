@@ -9,15 +9,19 @@ import (
 
 	v1 "github.com/SilasSolivagus/base-servers/gen/baseservers/v1"
 	"github.com/SilasSolivagus/base-servers/gen/baseservers/v1/baseserversv1connect"
+	"github.com/SilasSolivagus/base-servers/internal/audit"
 	"github.com/SilasSolivagus/base-servers/internal/authn"
 )
 
 type Handler struct {
 	svc     *Service
 	members *Store
+	rec     audit.Recorder
 }
 
-func NewHandler(svc *Service, members *Store) *Handler { return &Handler{svc: svc, members: members} }
+func NewHandler(svc *Service, members *Store, rec audit.Recorder) *Handler {
+	return &Handler{svc: svc, members: members, rec: rec}
+}
 
 func (h *Handler) Register(mux *http.ServeMux, opts ...connect.HandlerOption) {
 	path, hdl := baseserversv1connect.NewOrgServiceHandler(h, opts...)
@@ -43,6 +47,10 @@ func (h *Handler) CreateOrganization(ctx context.Context, req *connect.Request[v
 	if err != nil {
 		return nil, errCode(err)
 	}
+	aid, at, sa := audit.Actor(ctx)
+	h.rec.Record(ctx, audit.Event{ActorID: aid, ActorType: at, SystemAdmin: sa,
+		Action: "org.create", TargetType: "org", TargetID: o.ID, OrgID: o.ID,
+		Outcome: audit.OutcomeSuccess, Detail: map[string]string{"name": o.Name}})
 	return connect.NewResponse(&v1.CreateOrganizationResponse{
 		Organization: &v1.Organization{Id: o.ID, Name: o.Name, ParentId: o.ParentID},
 	}), nil
@@ -56,6 +64,10 @@ func (h *Handler) CreateTeam(ctx context.Context, req *connect.Request[v1.Create
 	if err != nil {
 		return nil, errCode(err)
 	}
+	aid, at, sa := audit.Actor(ctx)
+	h.rec.Record(ctx, audit.Event{ActorID: aid, ActorType: at, SystemAdmin: sa,
+		Action: "team.create", TargetType: "team", TargetID: tm.ID, OrgID: req.Msg.OrgId,
+		Outcome: audit.OutcomeSuccess, Detail: map[string]string{"name": tm.Name}})
 	return connect.NewResponse(&v1.CreateTeamResponse{Team: &v1.Team{Id: tm.ID, OrgId: tm.OrgID, Name: tm.Name}}), nil
 }
 
@@ -66,6 +78,10 @@ func (h *Handler) AddMember(ctx context.Context, req *connect.Request[v1.AddMemb
 	if err := h.svc.AddMember(ctx, req.Msg.PrincipalId, req.Msg.OrgId); err != nil {
 		return nil, errCode(err)
 	}
+	aid, at, sa := audit.Actor(ctx)
+	h.rec.Record(ctx, audit.Event{ActorID: aid, ActorType: at, SystemAdmin: sa,
+		Action: "org.member.add", TargetType: "principal", TargetID: req.Msg.PrincipalId, OrgID: req.Msg.OrgId,
+		Outcome: audit.OutcomeSuccess})
 	return connect.NewResponse(&v1.AddMemberResponse{}), nil
 }
 
@@ -80,5 +96,9 @@ func (h *Handler) AddTeamMember(ctx context.Context, req *connect.Request[v1.Add
 	if err := h.svc.AddTeamMember(ctx, req.Msg.PrincipalId, req.Msg.TeamId); err != nil {
 		return nil, errCode(err)
 	}
+	aid, at, sa := audit.Actor(ctx)
+	h.rec.Record(ctx, audit.Event{ActorID: aid, ActorType: at, SystemAdmin: sa,
+		Action: "team.member.add", TargetType: "principal", TargetID: req.Msg.PrincipalId, OrgID: orgID,
+		Outcome: audit.OutcomeSuccess, Detail: map[string]string{"team_id": req.Msg.TeamId}})
 	return connect.NewResponse(&v1.AddTeamMemberResponse{}), nil
 }

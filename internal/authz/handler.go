@@ -9,6 +9,7 @@ import (
 
 	v1 "github.com/SilasSolivagus/base-servers/gen/baseservers/v1"
 	"github.com/SilasSolivagus/base-servers/gen/baseservers/v1/baseserversv1connect"
+	"github.com/SilasSolivagus/base-servers/internal/audit"
 	"github.com/SilasSolivagus/base-servers/internal/authn"
 )
 
@@ -16,10 +17,11 @@ type Handler struct {
 	svc     *Service
 	store   *Store
 	members authn.MemberChecker
+	rec     audit.Recorder
 }
 
-func NewHandler(svc *Service, store *Store, members authn.MemberChecker) *Handler {
-	return &Handler{svc: svc, store: store, members: members}
+func NewHandler(svc *Service, store *Store, members authn.MemberChecker, rec audit.Recorder) *Handler {
+	return &Handler{svc: svc, store: store, members: members, rec: rec}
 }
 
 func (h *Handler) Register(mux *http.ServeMux, opts ...connect.HandlerOption) {
@@ -54,5 +56,9 @@ func (h *Handler) RegisterOwnership(ctx context.Context, req *connect.Request[v1
 	if err := h.store.RegisterOwnership(ctx, req.Msg.ResourceType, req.Msg.ResourceId, req.Msg.OwnerPrincipalId, req.Msg.OrgId); err != nil {
 		return nil, code(err)
 	}
+	aid, at, sa := audit.Actor(ctx)
+	h.rec.Record(ctx, audit.Event{ActorID: aid, ActorType: at, SystemAdmin: sa,
+		Action: "ownership.register", TargetType: req.Msg.ResourceType, TargetID: req.Msg.ResourceId, OrgID: req.Msg.OrgId,
+		Outcome: audit.OutcomeSuccess, Detail: map[string]string{"owner_principal_id": req.Msg.OwnerPrincipalId}})
 	return connect.NewResponse(&v1.RegisterOwnershipResponse{}), nil
 }
