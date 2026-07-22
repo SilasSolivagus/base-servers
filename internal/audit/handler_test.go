@@ -98,6 +98,72 @@ func TestAuditListScopesByChainSymmetricallyWithVerify(t *testing.T) {
 	}
 }
 
+// TestAuditListPaginatesStrictlyOlderEachPage 复现并锁定 review 发现的分页游标
+// 方向反了的 bug:ListAuditEvents 的游标谓词曾是 seq > $7,但排序是
+// ts DESC, seq DESC(新→旧)。翻页游标本该取"更旧"(seq < cursor),旧谓词却取
+// "更新"(seq > cursor),导致深翻页在最新的一页附近打转,永远到不了旧事件。
+// 修复后每一页都必须严格比上一页更旧,且全部事件恰好出现一次。
+func TestAuditListPaginatesStrictlyOlderEachPage(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	s := audit.NewStore(pool)
+	ctx := context.Background()
+	const total = 5
+	for i := 0; i < total; i++ {
+		if err := s.Append(ctx, "o1", []audit.Event{ev("a", "o1")}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h := audit.NewHandler(s, fakeMembers{member: true})
+	memberCtx := authn.WithCaller(context.Background(), authn.Caller{PrincipalID: "u1"})
+
+	seen := make(map[int64]bool)
+	var afterSeq int64
+	prevPageMinSeq := int64(-1) // -1 哨兵:还没有上一页
+	pages := 0
+	for {
+		resp, err := h.List(memberCtx, connect.NewRequest(&v1.ListRequest{
+			OrgId: "o1", PageSize: 2, AfterSeq: afterSeq,
+		}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(resp.Msg.Events) == 0 {
+			break
+		}
+		pages++
+		if pages > total+2 { // 安全阀:防止回归时在最新页附近打转把测试拖住
+			t.Fatalf("paging did not terminate after %d pages (stuck near newest page?) seen=%v", pages, seen)
+		}
+		pageMaxSeq, pageMinSeq := resp.Msg.Events[0].Seq, resp.Msg.Events[0].Seq
+		for _, e := range resp.Msg.Events {
+			if seen[e.Seq] {
+				t.Fatalf("seq %d returned on more than one page (cursor stuck near newest page): pages=%d", e.Seq, pages)
+			}
+			seen[e.Seq] = true
+			if e.Seq > pageMaxSeq {
+				pageMaxSeq = e.Seq
+			}
+			if e.Seq < pageMinSeq {
+				pageMinSeq = e.Seq
+			}
+		}
+		// 核心回归断言:本页的最大 seq 必须严格小于上一页的最小 seq —— 每页都比前一页更旧。
+		if prevPageMinSeq != -1 && pageMaxSeq >= prevPageMinSeq {
+			t.Fatalf("page %d not strictly older than previous page: pageMaxSeq=%d prevPageMinSeq=%d", pages, pageMaxSeq, prevPageMinSeq)
+		}
+		prevPageMinSeq = pageMinSeq
+		afterSeq = resp.Msg.NextAfterSeq
+	}
+	if len(seen) != total {
+		t.Fatalf("want %d unique events across all pages, got %d: %v", total, len(seen), seen)
+	}
+	for seq := int64(1); seq <= total; seq++ {
+		if !seen[seq] {
+			t.Fatalf("seq %d missing from paginated results (gap)", seq)
+		}
+	}
+}
+
 func TestAuditVerifyOK(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	s := audit.NewStore(pool)

@@ -18,6 +18,6 @@ WHERE chain = $1
   AND ($3::text = '' OR action = $3)
   AND ($4::text = '' OR outcome = $4)
   AND ts >= $5 AND ts <= $6
-  AND seq > $7
+  AND (seq < $7 OR $7 = 0)
 ORDER BY ts DESC, seq DESC
 LIMIT $8;
