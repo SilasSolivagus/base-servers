@@ -35,7 +35,7 @@ Worse, a new kind of user just arrived that traditional IAM was never designed f
 ## ✨ What makes it different
 
 - **Three first-class principals — human · service · AI agent.** Not "users, plus a bolted-on token." Agents are modeled as their own principal type, with an owner, a purpose, and a delegation chain.
-- **Agent-native delegation** *(Phase 3)* — an agent gets a **scoped, time-boxed, revocable** credential whose authority **can never exceed the person who granted it**, via OAuth2 Token Exchange / On-Behalf-Of. Every action stays attributable; a kill-switch revokes in seconds.
+- **Agent-native delegation** *(Phase 3)* — an agent gets a **scoped, time-boxed, revocable** On-Behalf-Of credential (an RFC 8693-shaped JWT base-servers mints and signs itself, with its own JWKS) whose authority **can never exceed the person who granted it**, and that only that person can issue. Every action stays attributable; a kill-switch revokes in seconds.
 - **Pluggable identity engine behind a clean adapter.** We don't reinvent OAuth crypto — we compose a proven engine behind a capability-flagged interface, so you're never locked to one vendor.
 - **Self-hosted & multi-tenant from day one.** One shared deployment serves all your systems and tenants; your data stays yours.
 - **Speak the lingua franca.** OAuth2 / OIDC for auth; a single [Connect](https://connectrpc.com) handler serves gRPC, gRPC-Web, and plain HTTP/JSON — callable from any language in a few lines.
@@ -49,29 +49,42 @@ Worse, a new kind of user just arrived that traditional IAM was never designed f
 
 Consumers (any system, or an AI agent) talk to the **base-servers API layer** over OIDC / gRPC / REST. That layer owns the net-new value — the unified API, the agent delegation logic, and permission checks — and sits on a swappable **identity engine** + PostgreSQL behind an adapter. The engine is an implementation detail; you program against base-servers' own API.
 
-## 🚀 Quick start
+## 🚀 Run it in 60 seconds
 
-> Phase 1 lets you create and fetch principals (human / service / agent) end-to-end.
+One command brings up the whole stack (Postgres + Keycloak + base-servers). On boot, base-servers applies its own DB migrations, provisions the `base-servers` realm and its OIDC clients, and self-provisions its delegation signing key — no manual schema or realm steps.
 
 ```bash
-# 1. Bring up the stack (identity engine + Postgres)
-docker compose -f deploy/docker-compose.yml up -d
+# Three secrets the service refuses to start without (fail-closed):
+export BS_SIGNING_KEK=$(head -c 32 /dev/urandom | base64)          # delegation signing-key encryption
+export BS_SERVICE_CLIENT_SECRET=svc-$(head -c 12 /dev/urandom | base64 | tr -dc a-z0-9)
+export BS_ROOT_TOKEN=$(head -c 24 /dev/urandom | base64)           # break-glass bootstrap credential
 
-# 2. Apply the schema
-export DATABASE_URL="postgres://base:base@localhost:5432/baseservers?sslmode=disable"
-goose -dir db/migrations postgres "$DATABASE_URL" up
-
-# 3. Run base-servers
-KEYCLOAK_URL=http://localhost:8080 go run ./cmd/base-servers
+docker compose -f deploy/docker-compose.yml up -d --build
+curl -fsS localhost:8081/readyz     # -> ready  (may take a minute on first boot)
 ```
 
+### The money demo
+
+See the whole agent-delegation story — scoped, time-boxed, revocable, never exceeding the granter — in one script:
+
 ```bash
-# Health
+./scripts/demo.sh
+```
+
+It registers a human (Alice) and an AI agent (Planner), gives Alice `doc.edit`, has her delegate a scoped 15-minute credential to Planner, then proves the agent is **allowed** in scope, **denied** out of scope, **denied** beyond what Alice herself holds, and **denied within seconds** after she revokes. Every outcome is asserted, so the script is also an end-to-end smoke test.
+
+### Raw API
+
+The control plane is authenticated — every Connect RPC needs a Keycloak bearer token (obtained via the [OIDC front-door](#-oidc-front-door)) or, for bootstrap, the `X-BS-Root-Token` header:
+
+```bash
+# Health probes are public
 curl -s localhost:8081/healthz            # -> ok
 
 # Register an AI agent as a first-class principal (Connect JSON over HTTP)
 curl -X POST localhost:8081/baseservers.v1.PrincipalService/CreatePrincipal \
   -H 'Content-Type: application/json' \
+  -H "X-BS-Root-Token: $BS_ROOT_TOKEN" \
   -d '{"type":"PRINCIPAL_TYPE_AGENT","displayName":"planner","ownerPrincipalId":"u1","purpose":"triage"}'
 ```
 
