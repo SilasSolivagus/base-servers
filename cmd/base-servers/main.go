@@ -5,11 +5,14 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"connectrpc.com/connect"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/SilasSolivagus/base-servers/internal/audit"
 	"github.com/SilasSolivagus/base-servers/internal/authn"
 	"github.com/SilasSolivagus/base-servers/internal/authz"
 	"github.com/SilasSolivagus/base-servers/internal/config"
@@ -51,7 +54,9 @@ func runServer() {
 		log.Fatalf("signing cipher: %v", err)
 	}
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("db: %v", err)
@@ -103,6 +108,18 @@ func runServer() {
 	authzStore := authz.NewStore(pool)
 	authzSvc := authz.NewService(authzStore)
 
+	auditStore := audit.NewStore(pool)
+	auditRec := audit.NewRecorder(auditStore, cfg.AuditBuffer)
+	// 审计排干的取消与信号 ctx 解耦:必须在 srv.Shutdown 返回(所有在途请求
+	// 已跑完、不再有 rec.Record 生产者)之后才取消,否则 Run 可能在信号一到就
+	// 排干退出,而慢请求随后写入的事件落进无人接收的 channel 被静默丢弃。
+	auditCtx, auditCancel := context.WithCancel(context.Background())
+	auditDone := make(chan struct{})
+	go func() {
+		auditRec.Run(auditCtx)
+		close(auditDone)
+	}()
+
 	signer := delegation.NewSigner(cfg.DelegationIssuer, keyMgr.Keyset)
 	delStore := delegation.NewStore(pool)
 	delSvc := delegation.NewService(delStore, signer, svc)
@@ -116,17 +133,30 @@ func runServer() {
 	}
 
 	srv := server.New(cfg, ready, []connect.HandlerOption{authInterceptor},
-		principal.NewHandler(svc),
-		org.NewHandler(orgSvc, orgStore),
-		role.NewHandler(roleSvc, orgStore),
-		authz.NewHandler(authzSvc, authzStore, orgStore),
-		delegation.NewHandler(delSvc, delChecker),
+		principal.NewHandler(svc, auditRec),
+		org.NewHandler(orgSvc, orgStore, auditRec),
+		role.NewHandler(roleSvc, orgStore, auditRec),
+		authz.NewHandler(authzSvc, authzStore, orgStore, auditRec),
+		delegation.NewHandler(delSvc, delChecker, auditRec),
 		delegation.NewJWKSHandler(signer),
+		audit.NewHandler(auditStore, orgStore),
 	)
-	log.Printf("base-servers listening on %s", cfg.HTTPAddr)
-	if err := srv.ListenAndServe(); err != nil {
-		log.Fatalf("serve: %v", err)
+
+	go func() {
+		log.Printf("base-servers listening on %s", cfg.HTTPAddr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("serve: %v", err)
+		}
+	}()
+
+	<-ctx.Done() // SIGINT/SIGTERM → 先停 HTTP 收尾在途请求,再排干审计缓冲
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("shutdown: %v", err)
 	}
+	auditCancel() // Shutdown 已返回 → 不再有生产者,现在才触发排干
+	<-auditDone   // 等审计记录器排干残余事件,再放 pool.Close() 执行
 }
 
 func runRotate() {

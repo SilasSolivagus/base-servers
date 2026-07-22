@@ -1,0 +1,35 @@
+syntax = "proto3";
+package baseservers.v1;
+option go_package = "github.com/SilasSolivagus/base-servers/gen/baseservers/v1;baseserversv1";
+
+message AuditEvent {
+  int64 seq = 1;
+  string ts = 2;              // RFC3339
+  string actor_id = 3;
+  string actor_type = 4;
+  bool system_admin = 5;
+  string action = 6;
+  string target_type = 7;
+  string target_id = 8;
+  string org_id = 9;
+  string outcome = 10;
+  map<string, string> detail = 11;
+}
+message ListRequest {
+  string org_id = 1;      // 必填:查哪个 org 的链(system-admin 可传 "system")
+  string actor_id = 2;
+  string action = 3;
+  string outcome = 4;
+  string from = 5;        // RFC3339,可空
+  string to = 6;          // RFC3339,可空
+  int32 page_size = 7;
+  int64 after_seq = 8;    // 游标
+}
+message ListResponse { repeated AuditEvent events = 1; int64 next_after_seq = 2; }
+message VerifyRequest { string org_id = 1; }
+message VerifyResponse { bool ok = 1; int64 broken_at_seq = 2; }
+
+service AuditService {
+  rpc List(ListRequest) returns (ListResponse);
+  rpc Verify(VerifyRequest) returns (VerifyResponse);
+}

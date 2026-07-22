@@ -10,6 +10,7 @@ import (
 
 	v1 "github.com/SilasSolivagus/base-servers/gen/baseservers/v1"
 	"github.com/SilasSolivagus/base-servers/gen/baseservers/v1/baseserversv1connect"
+	"github.com/SilasSolivagus/base-servers/internal/audit"
 	"github.com/SilasSolivagus/base-servers/internal/authn"
 	"github.com/SilasSolivagus/base-servers/internal/engine/fake"
 	"github.com/SilasSolivagus/base-servers/internal/principal"
@@ -20,7 +21,7 @@ func TestHandlerCreateAndGet(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	svc := principal.NewService(fake.New(), principal.NewStore(pool))
 	mux := http.NewServeMux()
-	principal.NewHandler(svc).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	principal.NewHandler(svc, audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
@@ -55,7 +56,7 @@ func TestHandlerCreatePrincipalInvalidInput(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	svc := principal.NewService(fake.New(), principal.NewStore(pool))
 	mux := http.NewServeMux()
-	principal.NewHandler(svc).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	principal.NewHandler(svc, audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
@@ -77,7 +78,7 @@ func TestHandlerCreatePrincipalInvalidInput(t *testing.T) {
 func TestHandlerCreatePrincipalRequiresSystemAdmin(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	svc := principal.NewService(fake.New(), principal.NewStore(pool))
-	h := principal.NewHandler(svc)
+	h := principal.NewHandler(svc, audit.NewRecorder(nil, 1))
 
 	ctx := authn.WithCaller(context.Background(), authn.Caller{PrincipalID: "not-root", SystemAdmin: false})
 	_, err := h.CreatePrincipal(ctx, connect.NewRequest(&v1.CreatePrincipalRequest{
@@ -92,7 +93,7 @@ func TestHandlerGetPrincipalNotFound(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	svc := principal.NewService(fake.New(), principal.NewStore(pool))
 	mux := http.NewServeMux()
-	principal.NewHandler(svc).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	principal.NewHandler(svc, audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 

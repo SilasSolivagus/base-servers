@@ -10,6 +10,7 @@ import (
 
 	v1 "github.com/SilasSolivagus/base-servers/gen/baseservers/v1"
 	"github.com/SilasSolivagus/base-servers/gen/baseservers/v1/baseserversv1connect"
+	"github.com/SilasSolivagus/base-servers/internal/audit"
 	"github.com/SilasSolivagus/base-servers/internal/authn"
 	"github.com/SilasSolivagus/base-servers/internal/authz"
 	"github.com/SilasSolivagus/base-servers/internal/org"
@@ -22,7 +23,7 @@ func TestAuthzHandlerRegisterThenCheck(t *testing.T) {
 	o, _ := org.NewStore(pool).CreateOrg(ctx, "Acme")
 	st := authz.NewStore(pool)
 	mux := http.NewServeMux()
-	authz.NewHandler(authz.NewService(st), st, org.NewStore(pool)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	authz.NewHandler(authz.NewService(st), st, org.NewStore(pool), audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
@@ -52,7 +53,7 @@ func TestAuthzHandlerCheckBadOrgIDIsInvalidArgument(t *testing.T) {
 	ctx := context.Background()
 	st := authz.NewStore(pool)
 	mux := http.NewServeMux()
-	authz.NewHandler(authz.NewService(st), st, org.NewStore(pool)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	authz.NewHandler(authz.NewService(st), st, org.NewStore(pool), audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
@@ -75,7 +76,7 @@ func TestAuthzHandlerCheckRequiresMembership(t *testing.T) {
 	ctx := context.Background()
 	orgStore := org.NewStore(pool)
 	st := authz.NewStore(pool)
-	h := authz.NewHandler(authz.NewService(st), st, orgStore)
+	h := authz.NewHandler(authz.NewService(st), st, orgStore, audit.NewRecorder(nil, 1))
 
 	orgA, err := orgStore.CreateOrg(ctx, "Tenant A")
 	if err != nil {
@@ -116,7 +117,7 @@ func TestAuthzHandlerRegisterOwnershipRequiresMembership(t *testing.T) {
 	ctx := context.Background()
 	orgStore := org.NewStore(pool)
 	st := authz.NewStore(pool)
-	h := authz.NewHandler(authz.NewService(st), st, orgStore)
+	h := authz.NewHandler(authz.NewService(st), st, orgStore, audit.NewRecorder(nil, 1))
 
 	orgA, err := orgStore.CreateOrg(ctx, "Tenant A")
 	if err != nil {

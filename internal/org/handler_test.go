@@ -10,6 +10,7 @@ import (
 
 	v1 "github.com/SilasSolivagus/base-servers/gen/baseservers/v1"
 	"github.com/SilasSolivagus/base-servers/gen/baseservers/v1/baseserversv1connect"
+	"github.com/SilasSolivagus/base-servers/internal/audit"
 	"github.com/SilasSolivagus/base-servers/internal/authn"
 	"github.com/SilasSolivagus/base-servers/internal/org"
 	"github.com/SilasSolivagus/base-servers/internal/role"
@@ -21,7 +22,7 @@ func TestOrgHandlerCreateAndTeam(t *testing.T) {
 	orgStore := org.NewStore(pool)
 	svc := org.NewService(orgStore, role.NewStore(pool))
 	mux := http.NewServeMux()
-	org.NewHandler(svc, orgStore).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	org.NewHandler(svc, orgStore, audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
@@ -47,7 +48,7 @@ func TestOrgHandlerRejectsEmpty(t *testing.T) {
 	orgStore := org.NewStore(pool)
 	svc := org.NewService(orgStore, role.NewStore(pool))
 	mux := http.NewServeMux()
-	org.NewHandler(svc, orgStore).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	org.NewHandler(svc, orgStore, audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	c := baseserversv1connect.NewOrgServiceClient(http.DefaultClient, srv.URL, testsupport.ClientOpts()...)
@@ -62,7 +63,7 @@ func TestOrgHandlerCreateOrganizationRequiresSystemAdmin(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	orgStore := org.NewStore(pool)
 	svc := org.NewService(orgStore, role.NewStore(pool))
-	h := org.NewHandler(svc, orgStore)
+	h := org.NewHandler(svc, orgStore, audit.NewRecorder(nil, 1))
 
 	ctx := authn.WithCaller(context.Background(), authn.Caller{PrincipalID: "not-root", SystemAdmin: false})
 	_, err := h.CreateOrganization(ctx, connect.NewRequest(&v1.CreateOrganizationRequest{Name: "Acme"}))
@@ -78,7 +79,7 @@ func TestOrgHandlerCreateTeamRequiresMembership(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	orgStore := org.NewStore(pool)
 	svc := org.NewService(orgStore, role.NewStore(pool))
-	h := org.NewHandler(svc, orgStore)
+	h := org.NewHandler(svc, orgStore, audit.NewRecorder(nil, 1))
 	ctx := context.Background()
 
 	orgA, err := orgStore.CreateOrg(ctx, "Tenant A")
@@ -113,7 +114,7 @@ func TestOrgHandlerAddMemberRequiresMembership(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	orgStore := org.NewStore(pool)
 	svc := org.NewService(orgStore, role.NewStore(pool))
-	h := org.NewHandler(svc, orgStore)
+	h := org.NewHandler(svc, orgStore, audit.NewRecorder(nil, 1))
 	ctx := context.Background()
 
 	orgA, err := orgStore.CreateOrg(ctx, "Tenant A")
@@ -143,7 +144,7 @@ func TestOrgHandlerAddTeamMemberRequiresMembership(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	orgStore := org.NewStore(pool)
 	svc := org.NewService(orgStore, role.NewStore(pool))
-	h := org.NewHandler(svc, orgStore)
+	h := org.NewHandler(svc, orgStore, audit.NewRecorder(nil, 1))
 	ctx := context.Background()
 
 	orgA, err := orgStore.CreateOrg(ctx, "Tenant A")
@@ -175,5 +176,39 @@ func TestOrgHandlerAddTeamMemberRequiresMembership(t *testing.T) {
 	memberCtx := authn.WithCaller(ctx, authn.Caller{PrincipalID: "member-b", SystemAdmin: false})
 	if _, err := h.AddTeamMember(memberCtx, connect.NewRequest(&v1.AddTeamMemberRequest{PrincipalId: "newbie", TeamId: teamB.ID})); err != nil {
 		t.Fatalf("member AddTeamMember: expected success, got %v", err)
+	}
+}
+
+// CreateOrganization must emit an org.create audit event on success, with the
+// new org's id as both TargetID and OrgID (system-admin-created orgs still
+// chain per-org, not into the system chain).
+func TestOrgHandlerCreateOrganizationEmitsAuditEvent(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	orgStore := org.NewStore(pool)
+	svc := org.NewService(orgStore, role.NewStore(pool))
+	rec := &audit.FakeRecorder{}
+	h := org.NewHandler(svc, orgStore, rec)
+
+	ctx := authn.WithCaller(context.Background(), authn.Caller{PrincipalID: "root", SystemAdmin: true})
+	resp, err := h.CreateOrganization(ctx, connect.NewRequest(&v1.CreateOrganizationRequest{Name: "Acme"}))
+	if err != nil {
+		t.Fatalf("create org: %v", err)
+	}
+	orgID := resp.Msg.Organization.Id
+
+	var found *audit.Event
+	for i := range rec.Events {
+		if rec.Events[i].Action == "org.create" {
+			found = &rec.Events[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("expected an org.create audit event, got %+v", rec.Events)
+	}
+	if found.TargetID != orgID || found.OrgID != orgID {
+		t.Fatalf("audit event target/org mismatch: %+v (want org id %s)", found, orgID)
+	}
+	if found.Outcome != audit.OutcomeSuccess {
+		t.Fatalf("expected success outcome, got %q", found.Outcome)
 	}
 }
