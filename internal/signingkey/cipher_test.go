@@ -3,6 +3,8 @@ package signingkey
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/base64"
+	"os"
 	"testing"
 )
 
@@ -64,4 +66,44 @@ func TestNonceIsRandom(t *testing.T) {
 	if bytes.Equal(a, b) {
 		t.Fatal("expected distinct nonces to yield distinct ciphertexts")
 	}
+}
+
+func TestKEKFromEnv(t *testing.T) {
+	t.Run("unset", func(t *testing.T) {
+		t.Setenv("BS_SIGNING_KEK", "placeholder")
+		os.Unsetenv("BS_SIGNING_KEK")
+		if _, err := KEKFromEnv(); err == nil {
+			t.Fatal("expected error when BS_SIGNING_KEK is unset")
+		}
+	})
+
+	t.Run("not valid base64", func(t *testing.T) {
+		t.Setenv("BS_SIGNING_KEK", "not-valid-base64!!!")
+		if _, err := KEKFromEnv(); err == nil {
+			t.Fatal("expected error for invalid base64")
+		}
+	})
+
+	t.Run("wrong length", func(t *testing.T) {
+		wrong := make([]byte, 16)
+		t.Setenv("BS_SIGNING_KEK", base64.StdEncoding.EncodeToString(wrong))
+		if _, err := KEKFromEnv(); err == nil {
+			t.Fatal("expected error for wrong-length key")
+		}
+	})
+
+	t.Run("valid 32 bytes", func(t *testing.T) {
+		good := make([]byte, 32)
+		if _, err := rand.Read(good); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("BS_SIGNING_KEK", base64.StdEncoding.EncodeToString(good))
+		kek, err := KEKFromEnv()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(kek) != 32 {
+			t.Fatalf("expected 32 bytes, got %d", len(kek))
+		}
+	})
 }

@@ -13,6 +13,12 @@ import (
 // nor a valid bearer token.
 var errAnonymous = fmt.Errorf("unauthenticated: no credentials")
 
+// errInvalidToken is the generic error returned to callers for any bearer
+// token verification failure. The verifier's detailed reason (e.g. issuer
+// mismatch, expired token) is intentionally not surfaced to the client to
+// avoid leaking which validation pin failed.
+var errInvalidToken = fmt.Errorf("unauthenticated: invalid or expired token")
+
 // errStreamingUnsupported is returned for any streaming RPC. Interceptor only
 // implements unary authn; mounting a streaming RPC without a real streaming
 // authn design would otherwise be silently unauthenticated, so streaming
@@ -51,7 +57,7 @@ func (ic *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			if err == nil {
 				return next(WithCaller(ctx, c), req)
 			}
-			return nil, connect.NewError(connect.CodeUnauthenticated, err)
+			return nil, connect.NewError(connect.CodeUnauthenticated, errInvalidToken)
 		}
 		return nil, connect.NewError(connect.CodeUnauthenticated, errAnonymous)
 	}
