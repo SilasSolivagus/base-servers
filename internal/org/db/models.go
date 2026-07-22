@@ -8,6 +8,23 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AuditEvent struct {
+	Chain       string
+	Seq         int64
+	Ts          pgtype.Timestamptz
+	ActorID     string
+	ActorType   string
+	SystemAdmin bool
+	Action      string
+	TargetType  string
+	TargetID    string
+	OrgID       string
+	Outcome     string
+	Detail      []byte
+	PrevHash    []byte
+	Hash        []byte
+}
+
 type Delegation struct {
 	ID                   pgtype.UUID
 	AgentPrincipalID     string
