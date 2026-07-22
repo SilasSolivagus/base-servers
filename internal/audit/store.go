@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"time"
@@ -62,6 +63,33 @@ func (s *Store) Append(ctx context.Context, chain string, events []Event) error 
 		prev = h
 	}
 	return tx.Commit(ctx)
+}
+
+// Verify 按 seq 顺序重算全链哈希,第一处不符(内容被改或链断)即返回 (false, seq)。
+func (s *Store) Verify(ctx context.Context, chain string) (bool, int64, error) {
+	rows, err := s.q.ScanAuditChain(ctx, chain)
+	if err != nil {
+		return false, 0, err
+	}
+	prev := genesis
+	var wantSeq int64
+	for _, r := range rows {
+		wantSeq++
+		if r.Seq != wantSeq {
+			return false, r.Seq, nil // 序号断裂(删/乱)
+		}
+		var d map[string]string
+		_ = json.Unmarshal(r.Detail, &d)
+		e := Event{ActorID: r.ActorID, ActorType: r.ActorType, SystemAdmin: r.SystemAdmin,
+			Action: r.Action, TargetType: r.TargetType, TargetID: r.TargetID, OrgID: r.OrgID,
+			Outcome: r.Outcome, Detail: d}
+		h := canonicalHash(r.Seq, r.Ts.Time.Truncate(time.Microsecond).UnixNano(), e, prev)
+		if !bytes.Equal(h, r.Hash) || !bytes.Equal(r.PrevHash, prev) {
+			return false, r.Seq, nil
+		}
+		prev = r.Hash
+	}
+	return true, 0, nil
 }
 
 type StoredEvent struct {

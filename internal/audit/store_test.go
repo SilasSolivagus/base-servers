@@ -48,3 +48,29 @@ func TestStoreAppendConcurrentSameChainNoGap(t *testing.T) {
 		t.Fatalf("want 8, got %d (seq gap/collision under concurrency)", len(got))
 	}
 }
+
+func TestVerifyDetectsTamper(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	s := audit.NewStore(pool)
+	ctx := context.Background()
+	for i := 0; i < 5; i++ {
+		if err := s.Append(ctx, "o1", []audit.Event{ev("a", "o1")}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ok, broken, err := s.Verify(ctx, "o1")
+	if err != nil || !ok {
+		t.Fatalf("intact chain must verify: ok=%v broken=%d err=%v", ok, broken, err)
+	}
+	// 绕过应用直接篡改第 3 条 → Verify 必须抓出
+	if _, err := pool.Exec(ctx, `UPDATE audit_events SET outcome='tampered' WHERE chain='o1' AND seq=3`); err != nil {
+		t.Fatal(err)
+	}
+	ok, broken, err = s.Verify(ctx, "o1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok || broken != 3 {
+		t.Fatalf("tamper at seq 3 must be detected: ok=%v broken=%d", ok, broken)
+	}
+}
