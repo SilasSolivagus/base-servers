@@ -9,7 +9,7 @@ Self-hosted. Multi-tenant. Standards-based. Stop rebuilding this layer in every 
 
 ![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
 ![Status](https://img.shields.io/badge/status-alpha-orange)
-![Ring 0](https://img.shields.io/badge/Ring%200-Phase%201%20shipped-brightgreen)
+![Ring 0](https://img.shields.io/badge/Ring%200-all%204%20phases%20shipped-brightgreen)
 ![Tests](https://img.shields.io/badge/tests-green%20(real%20containers)-brightgreen)
 ![PRs](https://img.shields.io/badge/PRs-welcome-blueviolet)
 
@@ -17,7 +17,7 @@ Self-hosted. Multi-tenant. Standards-based. Stop rebuilding this layer in every 
 
 ---
 
-> **Status: early / alpha.** The Ring 0 core is built and tested end-to-end against real Keycloak + Postgres: identity (human / service / agent principals), organizations & RBAC/ownership, and **agent delegation** (the headline). Front-door OIDC login and delivery hardening are next on the [roadmap](#-roadmap). Not production-ready yet.
+> **Status: early / alpha.** All four Ring 0 phases are built and tested end-to-end against real Keycloak + Postgres: identity (human / service / agent principals), organizations & RBAC/ownership, **agent delegation** (the headline), and the front-door & delivery layer — OIDC login front-door, one-command deploy, and an **authenticated** control plane (Keycloak bearer tokens + org-membership + delegation-authority enforcement). Outer rings are next on the [roadmap](#-roadmap). Not production-ready yet.
 >
 > **⚠️ Operational constraints (alpha) — read before deploying:**
 > - **Control-plane RPCs are now authenticated.** Every Connect RPC requires a valid Keycloak access token (`Authorization: Bearer …`), obtained via the [OIDC front-door](#-oidc-front-door); an anonymous caller gets `Unauthenticated`. Org-scoped RPCs additionally enforce that the caller is a member of the target org, and delegation `Issue` requires the caller to *be* the delegator — so a caller can only delegate its own authority (a caller can never mint a delegation naming someone else as the delegator). `X-BS-Root-Token` (`BS_ROOT_TOKEN`) is a break-glass bootstrap credential for the initial cross-tenant setup (registering the first principals, creating the first org + owner) — treat it like the signing KEK: env-injected, never committed, used only to bootstrap before any org/membership exists.
@@ -102,7 +102,7 @@ base-servers is scoped as an onion — a small mandatory core, then optional rin
 | **1 · Foundation** | Go service, pluggable identity-engine adapter, three-type principals, Postgres store, Connect RPC API | ✅ **Shipped** |
 | **2 · Org & Permissions** | Organizations, teams, membership, RBAC roles, `check(subject, action, resource)`, resource ownership | ✅ **Shipped** |
 | **3 · Agent Delegation** *(the headline)* | Token-exchange narrow tokens, effective-perms ≤ delegator, short-TTL + denylist revocation, DPoP sender-binding | ✅ **Shipped** |
-| **4 · Front-door & Delivery** | OIDC-fronted login + SSO, headless admin API, multi-tenant isolation, one-command deploy | 🔶 In progress — login front-door (public issuer + Caddy gateway) ✅ delivered; control-plane authn gate (Keycloak bearer + org-membership + delegation-authority checks) ✅ delivered; headless admin API next |
+| **4 · Front-door & Delivery** | OIDC-fronted login + SSO, headless admin API, multi-tenant isolation, one-command deploy | ✅ **Shipped** — OIDC login front-door (public issuer + Caddy gateway), authenticated Connect admin API (Keycloak bearer + org-membership + delegation-authority enforcement), one-command docker-compose deploy |
 
 Outer rings (notifications, audit, billing, webhooks, agent-to-agent messaging …) come later, each as its own module.
 
