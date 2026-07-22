@@ -312,7 +312,7 @@ func TestDelegationHandlerAuditNeverLeaksSecrets(t *testing.T) {
 					t.Fatalf("event %q detail key %q looks secret-carrying", e.Action, k)
 				}
 			}
-			if v == token {
+			if token != "" && strings.Contains(v, token) {
 				t.Fatalf("event %q detail[%q] leaked the issued token", e.Action, k)
 			}
 		}

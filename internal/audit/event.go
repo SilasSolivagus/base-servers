@@ -75,7 +75,8 @@ func Redact(d map[string]string) map[string]string {
 		lk := strings.ToLower(k)
 		if strings.Contains(lk, "token") || strings.Contains(lk, "secret") ||
 			strings.Contains(lk, "kek") || strings.Contains(lk, "password") ||
-			strings.Contains(lk, "proof") || strings.Contains(lk, "key") {
+			strings.Contains(lk, "proof") || strings.Contains(lk, "key") ||
+			strings.Contains(lk, "dpop") || strings.Contains(lk, "cnf") {
 			continue
 		}
 		out[k] = v
