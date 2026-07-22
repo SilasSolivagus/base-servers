@@ -65,7 +65,9 @@ curl -fsS localhost:8081/readyz     # -> ready  (may take a minute on first boot
 
 ### The money demo
 
-See the whole agent-delegation story — scoped, time-boxed, revocable, never exceeding the granter — in one script:
+The whole agent-delegation story — scoped, time-boxed, revocable, never exceeding the granter — in one script:
+
+![base-servers money demo: an AI agent is allowed in scope, denied out of scope, denied beyond what its granter holds, and denied within seconds of a revoke](docs/demo.gif)
 
 ```bash
 ./scripts/demo.sh

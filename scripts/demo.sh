@@ -28,6 +28,10 @@ set -euo pipefail
 API="${API:-http://localhost:8081}"
 : "${BS_ROOT_TOKEN:?set BS_ROOT_TOKEN to the same value the stack was started with}"
 
+# A per-run suffix keeps the underlying identity names unique, so the demo is
+# safe to re-run against the same stack. The printed labels stay clean.
+RUN="${RANDOM}${RANDOM}"
+
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
   G=$'\033[32m'; R=$'\033[31m'; B=$'\033[1m'; D=$'\033[2m'; Z=$'\033[0m'
 else
@@ -64,23 +68,23 @@ curl -fsS "$API/readyz" >/dev/null 2>&1 || fail "stack not ready at $API/readyz 
 echo
 echo "${B}1. Identities${Z}"
 ALICE=$(call PrincipalService/CreatePrincipal \
-  '{"type":"PRINCIPAL_TYPE_HUMAN","displayName":"Alice"}' | jq -r '.principal.id')
+  "{\"type\":\"PRINCIPAL_TYPE_HUMAN\",\"displayName\":\"Alice-$RUN\"}" | jq -r '.principal.id')
 [ -n "$ALICE" ] && [ "$ALICE" != "null" ] || fail "could not create Alice"
 echo "   human   Alice   = ${D}$ALICE${Z}"
 PLANNER=$(call PrincipalService/CreatePrincipal \
-  "{\"type\":\"PRINCIPAL_TYPE_AGENT\",\"displayName\":\"Planner\",\"ownerPrincipalId\":\"$ALICE\",\"purpose\":\"triage\"}" \
+  "{\"type\":\"PRINCIPAL_TYPE_AGENT\",\"displayName\":\"Planner-$RUN\",\"ownerPrincipalId\":\"$ALICE\",\"purpose\":\"triage\"}" \
   | jq -r '.principal.id')
 [ -n "$PLANNER" ] && [ "$PLANNER" != "null" ] || fail "could not create Planner"
 echo "   agent   Planner = ${D}$PLANNER${Z}  (owned by Alice)"
 
 echo
 echo "${B}2. Org + who has what${Z}"
-ORG=$(call OrgService/CreateOrganization '{"name":"Acme"}' | jq -r '.organization.id')
+ORG=$(call OrgService/CreateOrganization "{\"name\":\"Acme-$RUN\"}" | jq -r '.organization.id')
 [ -n "$ORG" ] && [ "$ORG" != "null" ] || fail "could not create org"
 call OrgService/AddMember "{\"principalId\":\"$ALICE\",\"orgId\":\"$ORG\"}" >/dev/null
 call OrgService/AddMember "{\"principalId\":\"$PLANNER\",\"orgId\":\"$ORG\"}" >/dev/null
 ROLE=$(call RoleService/CreateRole \
-  "{\"orgId\":\"$ORG\",\"name\":\"editor\",\"permissions\":[\"doc.edit\"]}" | jq -r '.role.id')
+  "{\"orgId\":\"$ORG\",\"name\":\"editor-$RUN\",\"permissions\":[\"doc.edit\"]}" | jq -r '.role.id')
 call RoleService/AssignRole \
   "{\"principalId\":\"$ALICE\",\"roleId\":\"$ROLE\",\"scopeType\":\"org\",\"scopeId\":\"$ORG\"}" >/dev/null
 echo "   Alice is granted the ${B}editor${Z} role → she has ${B}doc.edit${Z} (but not billing.view / admin.super)"
