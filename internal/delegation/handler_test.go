@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -11,6 +12,7 @@ import (
 
 	v1 "github.com/SilasSolivagus/base-servers/gen/baseservers/v1"
 	"github.com/SilasSolivagus/base-servers/gen/baseservers/v1/baseserversv1connect"
+	"github.com/SilasSolivagus/base-servers/internal/audit"
 	"github.com/SilasSolivagus/base-servers/internal/authn"
 	"github.com/SilasSolivagus/base-servers/internal/authz"
 	"github.com/SilasSolivagus/base-servers/internal/delegation"
@@ -27,7 +29,7 @@ func (f fakeTyper) TypeOf(_ context.Context, id string) (engine.PrincipalType, e
 	return f[id], nil
 }
 
-func newTestServer(t *testing.T, pool *pgxpool.Pool, typer fakeTyper) *httptest.Server {
+func newTestServer(t *testing.T, pool *pgxpool.Pool, typer fakeTyper, rec audit.Recorder) *httptest.Server {
 	t.Helper()
 	k, err := signingkey.GenerateKey()
 	if err != nil {
@@ -39,7 +41,7 @@ func newTestServer(t *testing.T, pool *pgxpool.Pool, typer fakeTyper) *httptest.
 	svc := delegation.NewService(st, sig, typer)
 	checker := delegation.NewChecker(st, sig, authz.NewService(authz.NewStore(pool)))
 	mux := http.NewServeMux()
-	delegation.NewHandler(svc, checker).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	delegation.NewHandler(svc, checker, rec).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv
@@ -47,7 +49,7 @@ func newTestServer(t *testing.T, pool *pgxpool.Pool, typer fakeTyper) *httptest.
 
 func TestDelegationHandlerIssueAndRevoke(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
-	srv := newTestServer(t, pool, fakeTyper{"u1": engine.Human, "ag1": engine.Agent})
+	srv := newTestServer(t, pool, fakeTyper{"u1": engine.Human, "ag1": engine.Agent}, audit.NewRecorder(nil, 1))
 	o, err := org.NewStore(pool).CreateOrg(context.Background(), "Acme")
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +76,8 @@ func TestDelegationHandlerIssueAndRevoke(t *testing.T) {
 
 func TestDelegationHandlerCheckDelegatedAllowThenDenyAfterRevoke(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
-	srv := newTestServer(t, pool, fakeTyper{"u1": engine.Human, "ag1": engine.Agent})
+	rec := &audit.FakeRecorder{}
+	srv := newTestServer(t, pool, fakeTyper{"u1": engine.Human, "ag1": engine.Agent}, rec)
 	o, err := org.NewStore(pool).CreateOrg(context.Background(), "Acme")
 	if err != nil {
 		t.Fatal(err)
@@ -104,6 +107,13 @@ func TestDelegationHandlerCheckDelegatedAllowThenDenyAfterRevoke(t *testing.T) {
 	if !checkResp.Msg.Allowed {
 		t.Fatal("expected allowed=true before revoke")
 	}
+	if n := len(rec.Events); n != 2 {
+		t.Fatalf("expected 2 events after issue+check (issue, decision), got %d: %+v", n, rec.Events)
+	}
+	allowEvt := rec.Events[len(rec.Events)-1]
+	if allowEvt.Action != "authz.decision" || allowEvt.Outcome != audit.OutcomeSuccess || allowEvt.Detail["allowed"] != "true" || allowEvt.Detail["via"] != "delegation" {
+		t.Fatalf("expected authz.decision success allowed=true via=delegation, got %+v", allowEvt)
+	}
 
 	_, err = c.Revoke(context.Background(), connect.NewRequest(&v1.RevokeRequest{
 		DelegationId: issueResp.Msg.DelegationId,
@@ -121,12 +131,16 @@ func TestDelegationHandlerCheckDelegatedAllowThenDenyAfterRevoke(t *testing.T) {
 	if checkResp.Msg.Allowed {
 		t.Fatal("expected allowed=false after revoke")
 	}
+	denyEvt := rec.Events[len(rec.Events)-1]
+	if denyEvt.Action != "authz.decision" || denyEvt.Outcome != audit.OutcomeDenied || denyEvt.Detail["allowed"] != "false" || denyEvt.Detail["via"] != "delegation" {
+		t.Fatalf("expected authz.decision denied allowed=false via=delegation, got %+v", denyEvt)
+	}
 }
 
 // newTestHandler builds a *delegation.Handler directly (no HTTP layer) so
 // tests can inject an authn.Caller into ctx and call handler methods
 // in-process, mirroring the pattern used by internal/role/handler_test.go.
-func newTestHandler(t *testing.T, pool *pgxpool.Pool, typer fakeTyper) *delegation.Handler {
+func newTestHandler(t *testing.T, pool *pgxpool.Pool, typer fakeTyper, rec audit.Recorder) *delegation.Handler {
 	t.Helper()
 	k, err := signingkey.GenerateKey()
 	if err != nil {
@@ -137,14 +151,14 @@ func newTestHandler(t *testing.T, pool *pgxpool.Pool, typer fakeTyper) *delegati
 	st := delegation.NewStore(pool)
 	svc := delegation.NewService(st, sig, typer)
 	checker := delegation.NewChecker(st, sig, authz.NewService(authz.NewStore(pool)))
-	return delegation.NewHandler(svc, checker)
+	return delegation.NewHandler(svc, checker, rec)
 }
 
 // Confused-deputy guard: Issue must reject a caller naming a delegator other
 // than itself, unless the caller is a system-admin.
 func TestDelegationHandlerIssueRequiresCallerIsDelegator(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
-	h := newTestHandler(t, pool, fakeTyper{"u1": engine.Human, "u2": engine.Human, "ag1": engine.Agent})
+	h := newTestHandler(t, pool, fakeTyper{"u1": engine.Human, "u2": engine.Human, "ag1": engine.Agent}, audit.NewRecorder(nil, 1))
 	o, err := org.NewStore(pool).CreateOrg(context.Background(), "Acme")
 	if err != nil {
 		t.Fatal(err)
@@ -187,7 +201,7 @@ func TestDelegationHandlerIssueRequiresCallerIsDelegator(t *testing.T) {
 // system-admin; any other authenticated caller is denied.
 func TestDelegationHandlerRevokeRequiresDelegatorOrSystemAdmin(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
-	h := newTestHandler(t, pool, fakeTyper{"u1": engine.Human, "ag1": engine.Agent})
+	h := newTestHandler(t, pool, fakeTyper{"u1": engine.Human, "ag1": engine.Agent}, audit.NewRecorder(nil, 1))
 	o, err := org.NewStore(pool).CreateOrg(context.Background(), "Acme")
 	if err != nil {
 		t.Fatal(err)
@@ -235,7 +249,7 @@ func TestDelegationHandlerRevokeRequiresDelegatorOrSystemAdmin(t *testing.T) {
 
 func TestDelegationHandlerIssueRejectsDelegatorIsAgent(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
-	srv := newTestServer(t, pool, fakeTyper{"ag1": engine.Agent, "ag2": engine.Agent})
+	srv := newTestServer(t, pool, fakeTyper{"ag1": engine.Agent, "ag2": engine.Agent}, audit.NewRecorder(nil, 1))
 	o, err := org.NewStore(pool).CreateOrg(context.Background(), "Acme")
 	if err != nil {
 		t.Fatal(err)
@@ -247,5 +261,60 @@ func TestDelegationHandlerIssueRejectsDelegatorIsAgent(t *testing.T) {
 	}))
 	if connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("expected InvalidArgument, got %v", connect.CodeOf(err))
+	}
+}
+
+// Adversarial redaction acceptance: Issue mints and returns a real signed
+// delegation token, and CheckDelegated/Revoke handle it too. None of that
+// token material may ever end up in an audit Detail — the audit trail must
+// never become a secret-leak surface. This walks every event the
+// FakeRecorder captured and every Detail k/v within it.
+func TestDelegationHandlerAuditNeverLeaksSecrets(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	rec := &audit.FakeRecorder{}
+	h := newTestHandler(t, pool, fakeTyper{"u1": engine.Human, "ag1": engine.Agent}, rec)
+	o, err := org.NewStore(pool).CreateOrg(context.Background(), "Acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	selfCtx := authn.WithCaller(context.Background(), authn.Caller{PrincipalID: "u1", SystemAdmin: false})
+
+	issued, err := h.Issue(selfCtx, connect.NewRequest(&v1.IssueRequest{
+		AgentId: "ag1", DelegatorId: "u1", OrgId: o.ID, Scope: []string{"doc.edit"}, TtlSeconds: 300,
+	}))
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+	token := issued.Msg.Token
+	if token == "" {
+		t.Fatal("expected a real signed token")
+	}
+
+	if _, err := h.CheckDelegated(context.Background(), connect.NewRequest(&v1.CheckDelegatedRequest{
+		Token: token, Action: "doc.edit", ResourceType: "doc", ResourceId: "d1", OrgId: o.ID,
+	})); err != nil {
+		t.Fatalf("check delegated: %v", err)
+	}
+
+	if _, err := h.Revoke(selfCtx, connect.NewRequest(&v1.RevokeRequest{DelegationId: issued.Msg.DelegationId})); err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+
+	if len(rec.Events) == 0 {
+		t.Fatal("expected at least one audit event")
+	}
+	secretishMarkers := []string{"token", "secret", "kek", "password", "proof", "key", "dpop", "cnf"}
+	for _, e := range rec.Events {
+		for k, v := range e.Detail {
+			lk := strings.ToLower(k)
+			for _, marker := range secretishMarkers {
+				if strings.Contains(lk, marker) {
+					t.Fatalf("event %q detail key %q looks secret-carrying", e.Action, k)
+				}
+			}
+			if v == token {
+				t.Fatalf("event %q detail[%q] leaked the issued token", e.Action, k)
+			}
+		}
 	}
 }

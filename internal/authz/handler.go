@@ -46,7 +46,23 @@ func (h *Handler) Check(ctx context.Context, req *connect.Request[v1.CheckReques
 	if err != nil {
 		return nil, code(err)
 	}
+	aid, at, sa := audit.Actor(ctx)
+	oc := audit.OutcomeDenied
+	if allowed {
+		oc = audit.OutcomeSuccess
+	}
+	h.rec.Record(ctx, audit.Event{ActorID: aid, ActorType: at, SystemAdmin: sa,
+		Action: "authz.decision", TargetType: req.Msg.ResourceType, TargetID: req.Msg.ResourceId,
+		OrgID: req.Msg.OrgId, Outcome: oc,
+		Detail: map[string]string{"action": req.Msg.Action, "via": "rbac", "allowed": boolStr(allowed)}})
 	return connect.NewResponse(&v1.CheckResponse{Allowed: allowed}), nil
+}
+
+func boolStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
 }
 
 func (h *Handler) RegisterOwnership(ctx context.Context, req *connect.Request[v1.RegisterOwnershipRequest]) (*connect.Response[v1.RegisterOwnershipResponse], error) {

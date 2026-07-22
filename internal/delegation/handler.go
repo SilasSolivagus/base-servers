@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"connectrpc.com/connect"
 
 	v1 "github.com/SilasSolivagus/base-servers/gen/baseservers/v1"
 	"github.com/SilasSolivagus/base-servers/gen/baseservers/v1/baseserversv1connect"
+	"github.com/SilasSolivagus/base-servers/internal/audit"
 	"github.com/SilasSolivagus/base-servers/internal/authn"
 	"github.com/SilasSolivagus/base-servers/internal/authz"
 )
@@ -17,9 +19,19 @@ import (
 type Handler struct {
 	svc     *Service
 	checker *Checker
+	rec     audit.Recorder
 }
 
-func NewHandler(svc *Service, checker *Checker) *Handler { return &Handler{svc: svc, checker: checker} }
+func NewHandler(svc *Service, checker *Checker, rec audit.Recorder) *Handler {
+	return &Handler{svc: svc, checker: checker, rec: rec}
+}
+
+func boolStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
 
 func (h *Handler) Register(mux *http.ServeMux, opts ...connect.HandlerOption) {
 	path, hdl := baseserversv1connect.NewDelegationServiceHandler(h, opts...)
@@ -53,6 +65,11 @@ func (h *Handler) Issue(ctx context.Context, req *connect.Request[v1.IssueReques
 	if err != nil {
 		return nil, code(err)
 	}
+	aid, at, sa := audit.Actor(ctx)
+	h.rec.Record(ctx, audit.Event{ActorID: aid, ActorType: at, SystemAdmin: sa,
+		Action: "delegation.issue", TargetType: "delegation", TargetID: id, OrgID: req.Msg.OrgId,
+		Outcome: audit.OutcomeSuccess,
+		Detail: map[string]string{"agent": req.Msg.AgentId, "delegator": req.Msg.DelegatorId, "scope_count": strconv.Itoa(len(req.Msg.Scope))}})
 	return connect.NewResponse(&v1.IssueResponse{Token: tok, DelegationId: id}), nil
 }
 
@@ -73,6 +90,10 @@ func (h *Handler) Revoke(ctx context.Context, req *connect.Request[v1.RevokeRequ
 	if err := h.svc.Revoke(ctx, req.Msg.DelegationId); err != nil {
 		return nil, code(err)
 	}
+	aid, at, sa := audit.Actor(ctx)
+	h.rec.Record(ctx, audit.Event{ActorID: aid, ActorType: at, SystemAdmin: sa,
+		Action: "delegation.revoke", TargetType: "delegation", TargetID: req.Msg.DelegationId, OrgID: d.OrgID,
+		Outcome: audit.OutcomeSuccess})
 	return connect.NewResponse(&v1.RevokeResponse{}), nil
 }
 
@@ -87,5 +108,14 @@ func (h *Handler) CheckDelegated(ctx context.Context, req *connect.Request[v1.Ch
 	if err != nil {
 		return nil, code(err)
 	}
+	aid, at, sa := audit.Actor(ctx)
+	oc := audit.OutcomeDenied
+	if allowed {
+		oc = audit.OutcomeSuccess
+	}
+	h.rec.Record(ctx, audit.Event{ActorID: aid, ActorType: at, SystemAdmin: sa,
+		Action: "authz.decision", TargetType: req.Msg.ResourceType, TargetID: req.Msg.ResourceId,
+		OrgID: req.Msg.OrgId, Outcome: oc,
+		Detail: map[string]string{"action": req.Msg.Action, "via": "delegation", "allowed": boolStr(allowed)}})
 	return connect.NewResponse(&v1.CheckDelegatedResponse{Allowed: allowed}), nil
 }

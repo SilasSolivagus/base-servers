@@ -125,7 +125,7 @@ func runServer() {
 		org.NewHandler(orgSvc, orgStore, auditRec),
 		role.NewHandler(roleSvc, orgStore, auditRec),
 		authz.NewHandler(authzSvc, authzStore, orgStore, auditRec),
-		delegation.NewHandler(delSvc, delChecker),
+		delegation.NewHandler(delSvc, delChecker, auditRec),
 		delegation.NewJWKSHandler(signer),
 	)
 	log.Printf("base-servers listening on %s", cfg.HTTPAddr)
