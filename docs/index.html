@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="base-servers — the identity & permission layer for AI agents. Live money-demo, and a PM self-check for whether to use it.">
+<title>base-servers</title>
+</head>
+<body>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#11161f; --panel2:#161c27; --line:#232c39;
+    --ink:#dae1ec; --muted:#8a95a6; --faint:#5a6575;
+    --accent:#5ac8fb; --accent-2:#2f9bd0; --allow:#49c17e; --deny:#ef6d6a;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme:light){ :root{ --bg:#f7f9fc; --panel:#ffffff; --panel2:#eef2f7; --line:#e2e7ef;
+    --ink:#151d2b; --muted:#546072; --faint:#8894a4; --accent:#1670c0; --accent-2:#1483d6; --allow:#1f9d59; --deny:#cf4a45; } }
+  :root[data-theme="dark"]{ --bg:#0b0e14; --panel:#11161f; --panel2:#161c27; --line:#232c39; --ink:#dae1ec; --muted:#8a95a6; --faint:#5a6575; --accent:#5ac8fb; --allow:#49c17e; --deny:#ef6d6a; }
+  :root[data-theme="light"]{ --bg:#f7f9fc; --panel:#ffffff; --panel2:#eef2f7; --line:#e2e7ef; --ink:#151d2b; --muted:#546072; --faint:#8894a4; --accent:#1670c0; --allow:#1f9d59; --deny:#cf4a45; }
+
+  *{box-sizing:border-box} body{margin:0}
+  .deck{background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:16px; line-height:1.7; -webkit-font-smoothing:antialiased; scroll-snap-type:y proximity}
+  .deck ::selection{background:color-mix(in srgb,var(--accent) 30%,transparent)}
+  .slide{min-height:94vh; scroll-snap-align:start; display:flex; flex-direction:column; justify-content:center; padding:64px max(24px,6vw); border-bottom:1px solid var(--line); position:relative}
+  .inner{width:100%; max-width:1040px; margin:0 auto}
+
+  .langbar{position:sticky; top:12px; z-index:20; margin:12px max(24px,6vw) -46px auto; width:max-content; display:flex; gap:2px; background:color-mix(in srgb,var(--panel) 90%,transparent); border:1px solid var(--line); border-radius:22px; padding:3px; backdrop-filter:blur(6px)}
+  .langbar button{font-family:var(--mono); font-size:12px; letter-spacing:.04em; border:0; background:transparent; color:var(--muted); padding:6px 13px; border-radius:20px; cursor:pointer}
+  .langbar button[aria-pressed="true"]{background:var(--accent); color:var(--bg)}
+  .langbar button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  .eyebrow{font-family:var(--mono); font-size:12px; letter-spacing:.18em; text-transform:uppercase; color:var(--accent); margin:0 0 20px; display:flex; align-items:center; gap:10px}
+  .eyebrow::before{content:""; width:24px; height:1px; background:var(--accent); opacity:.7}
+  .kick{font-family:var(--mono); font-size:12px; letter-spacing:.15em; text-transform:uppercase; color:var(--faint); margin:0 0 18px}
+  h1{font-weight:600; font-size:clamp(30px,6vw,50px); line-height:1.18; letter-spacing:-.01em; margin:0 0 20px; text-wrap:balance}
+  h1 .hl{color:var(--accent)}
+  h2{font-weight:600; font-size:clamp(23px,3.6vw,31px); letter-spacing:-.01em; margin:0 0 12px; text-wrap:balance}
+  .lede{font-size:clamp(17px,2.2vw,20px); color:var(--muted); margin:0; max-width:48ch} .lede b{color:var(--ink); font-weight:600}
+  .sub{color:var(--muted); margin:0 0 32px; max-width:52ch; font-size:16.5px}
+
+  .term{margin:40px 0 16px; border:1px solid var(--line); border-radius:14px; overflow:hidden; background:var(--panel); box-shadow:0 1px 0 color-mix(in srgb,var(--accent) 14%,transparent)}
+  .term__bar{display:flex; align-items:center; gap:8px; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--panel2); font-family:var(--mono); font-size:12px; color:var(--faint)}
+  .dot{width:11px;height:11px;border-radius:50%;background:var(--line)}
+  .term__bar .nm{margin-left:8px;color:var(--muted)} .term__bar .tg{margin-left:auto;letter-spacing:.05em}
+  .term img{display:block;width:100%;height:auto}
+  .cap{font-size:13.5px; color:var(--faint); margin:0}
+  .cap .a{color:var(--allow); font-family:var(--mono)} .cap .d{color:var(--deny); font-family:var(--mono)}
+  .scrollcue{position:absolute; bottom:26px; left:50%; transform:translateX(-50%); font-family:var(--mono); font-size:11px; letter-spacing:.2em; color:var(--faint)}
+
+  .chips{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-top:8px}
+  .chip{border:1px solid var(--line); border-radius:12px; padding:18px; background:var(--panel)}
+  .chip .k{font-family:var(--mono); font-size:14px; color:var(--accent); margin:0 0 7px} .chip .v{font-size:14px; color:var(--muted); margin:0; line-height:1.6}
+
+  .cmp{display:grid; grid-template-columns:1fr 48px 1fr; gap:0 8px; align-items:stretch}
+  .cmp h3{font-family:var(--mono); font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin:0 0 14px; font-weight:600}
+  .stack{display:flex; flex-direction:column; gap:9px}
+  .row{font-size:13.5px; color:var(--ink); border:1px solid var(--line); border-left:2px solid color-mix(in srgb,var(--deny) 55%,var(--line)); border-radius:9px; padding:13px 15px; background:var(--panel)}
+  .eq{font-family:var(--mono); font-size:26px; color:var(--faint); align-self:center; text-align:center}
+  .call{border:1px solid color-mix(in srgb,var(--accent) 42%,var(--line)); border-radius:14px; padding:22px; background:color-mix(in srgb,var(--accent) 8%,var(--panel)); height:100%; display:flex; flex-direction:column; justify-content:center; gap:8px}
+  .call .big{font-family:var(--mono); font-size:20px; color:var(--ink); font-weight:600; margin:0 0 6px}
+  .call code{font-family:var(--mono); font-size:13.5px; color:var(--accent); background:color-mix(in srgb,var(--accent) 12%,transparent); padding:2px 8px; border-radius:6px}
+  .call .ln{font-size:14px; color:var(--muted); margin:0} .call .rs{font-size:14px; color:var(--ink); margin:10px 0 0; font-weight:600}
+
+  .decide{background:var(--panel)}
+  .checks{display:grid; gap:12px; margin:0 0 22px}
+  .check{display:flex; gap:14px; align-items:flex-start; border:1px solid var(--line); border-radius:12px; padding:16px 18px; background:var(--bg); cursor:pointer; transition:border-color .15s, background .15s; position:relative}
+  .check input{position:absolute; opacity:0; width:0; height:0}
+  .box{flex:0 0 auto; width:22px; height:22px; border-radius:6px; border:1.5px solid var(--faint); display:grid; place-items:center; margin-top:2px; font-family:var(--mono); font-size:14px; color:var(--bg); transition:all .15s}
+  .check:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+  .check:has(input:checked) .box{background:var(--accent); border-color:var(--accent)}
+  .check:has(input:checked){border-color:color-mix(in srgb,var(--accent) 55%,var(--line)); background:color-mix(in srgb,var(--accent) 7%,var(--bg))}
+  .check .box::after{content:"✓"; opacity:0} .check:has(input:checked) .box::after{opacity:1}
+  .check .txt{font-size:15.5px; color:var(--ink); line-height:1.6} .check .txt b{color:var(--accent); font-weight:600}
+  .check input:focus-visible + .box{outline:2px solid var(--accent); outline-offset:2px}
+  .verdict{border-radius:12px; padding:18px 20px; font-size:15.5px; border:1px solid var(--line); background:var(--bg); display:flex; gap:14px; align-items:center; transition:all .2s}
+  .verdict .vk{font-family:var(--mono); font-size:12px; letter-spacing:.06em; padding:5px 11px; border-radius:20px; flex:0 0 auto; background:var(--panel2); color:var(--muted)}
+  .verdict.yes{border-color:color-mix(in srgb,var(--allow) 50%,var(--line)); background:color-mix(in srgb,var(--allow) 8%,var(--bg))}
+  .verdict.yes .vk{background:var(--allow); color:var(--bg)}
+  .verdict p{margin:0; color:var(--ink)} .verdict.yes p b{color:var(--allow)}
+  .skip{margin-top:20px; font-size:14.5px; color:var(--muted)}
+  .skip b{color:var(--ink); font-weight:600; font-family:var(--mono); font-size:12px; letter-spacing:.06em}
+  .skip ul{margin:8px 0 0; padding-left:20px} .skip li{margin:5px 0}
+
+  .status{border:1px solid var(--line); border-radius:14px; padding:24px; background:var(--panel); display:flex; gap:16px; align-items:flex-start; margin-bottom:26px}
+  .status .pill{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--bg); background:var(--accent); padding:5px 10px; border-radius:20px; flex:0 0 auto; margin-top:3px}
+  .status p{margin:0; color:var(--muted); font-size:15px} .status p b{color:var(--ink); font-weight:600}
+  .cta{display:flex; gap:14px; align-items:center; flex-wrap:wrap}
+  .cta a{font-family:var(--mono); font-size:14px; text-decoration:none; padding:12px 20px; border-radius:10px}
+  .cta a.primary{background:var(--accent); color:var(--bg); font-weight:600}
+  .cta a.ghost{color:var(--accent); border:1px solid color-mix(in srgb,var(--accent) 42%,var(--line))}
+  .cta a:hover{filter:brightness(1.06)} a:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .mk{font-family:var(--mono); font-size:13px; color:var(--faint); margin-top:22px}
+  @media (max-width:640px){ .slide{min-height:auto; padding:52px 20px} .cmp{grid-template-columns:1fr; gap:14px} .eq{display:none} .status{flex-direction:column} }
+  @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto} .box,.check,.verdict{transition:none}}
+</style>
+
+<div class="langbar" role="group" aria-label="language">
+  <button id="b-cn" aria-pressed="true" onclick="setLang('cn')">中</button>
+  <button id="b-en" aria-pressed="false" onclick="setLang('en')">EN</button>
+</div>
+
+<div class="deck">
+  <section class="slide">
+    <div class="inner">
+      <p class="eyebrow" data-i="eyebrow">身份与权限 · agent 原生</p>
+      <h1 data-i="h1">给 AI agent 真正的权限。<br><span class="hl">同时握紧那根缰绳。</span></h1>
+      <p class="lede" data-i="lede">面向人、服务、AI agent 的身份与权限底座。<b>每个系统最难、也最安全敏感的那一层——做一次,做对。</b></p>
+      <div class="term">
+        <div class="term__bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="nm" data-i="termnm">money demo — 完整故事,真实栈,约 60 秒</span><span class="tg">./scripts/demo.sh</span></div>
+        <img src="demo.gif" alt="money demo">
+      </div>
+      <p class="cap" data-i="cap"><span class="a">放行</span> 在范围内 · <span class="d">拒绝</span> 越出范围 · <span class="d">拒绝</span> 超过授权人 · <span class="d">拒绝</span> 撤销后秒级</p>
+    </div>
+    <span class="scrollcue" data-i="scroll">向下滚动 ↓</span>
+  </section>
+
+  <section class="slide">
+    <div class="inner">
+      <p class="kick" data-i="s2kick">五轴保证</p>
+      <h2 data-i="s2h">agent 的权限,被五个轴向锁死</h2>
+      <p class="sub" data-i="s2sub">给 agent 一把 API key,就是交出一份永久、越权、不可撤销、不可审计的凭证。base-servers 给它的是另一种东西。</p>
+      <div class="chips">
+        <div class="chip"><p class="k" data-i="c1k">限范围</p><p class="v" data-i="c1v">只允许授权时点名的动作。</p></div>
+        <div class="chip"><p class="k" data-i="c2k">限时</p><p class="v" data-i="c2v">短命,自动过期。</p></div>
+        <div class="chip"><p class="k" data-i="c3k">可撤销</p><p class="v" data-i="c3v">kill-switch,秒级生效。</p></div>
+        <div class="chip"><p class="k" data-i="c4k">可归因</p><p class="v" data-i="c4v">每步都追溯到 agent 和它背后的人。</p></div>
+        <div class="chip"><p class="k" data-i="c5k">≤ 授权人</p><p class="v" data-i="c5v">永不超过授权它的人自己拥有的权限。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="inner">
+      <p class="kick" data-i="s3kick">核心卖点</p>
+      <h2 data-i="s3h">自己搭这一层,还是直接调</h2>
+      <p class="sub" data-i="s3sub">每个系统都在重复搭同一层地基——而它恰恰是一个细微 bug 就等于一次安全事故的那一层。</p>
+      <div class="cmp">
+        <div>
+          <h3 data-i="s3l">你自己搭,并长期维护</h3>
+          <div class="stack">
+            <div class="row" data-i="r1">账号 · 登录 · PKCE · 会话</div>
+            <div class="row" data-i="r2">组织 · 团队 · 成员</div>
+            <div class="row" data-i="r3">角色 · 权限 · 资源归属</div>
+            <div class="row" data-i="r4">agent 委托 · 可撤销 · ≤ 授权人</div>
+            <div class="row" data-i="r5">令牌签名 · JWKS · 轮换</div>
+            <div class="row" data-i="r6">多租户隔离 · 认证门</div>
+          </div>
+        </div>
+        <div class="eq">=</div>
+        <div>
+          <h3 data-i="s3r">你只需调一个 API</h3>
+          <div class="call">
+            <p class="big">base-servers</p>
+            <p class="ln"><code>docker compose up</code></p>
+            <p class="ln" data-i="cl2">+ 一个 bearer 令牌</p>
+            <p class="ln" data-i="cl3">+ 几个 RPC 调用</p>
+            <p class="rs" data-i="clr">= 左边这一整列,已在真实基建上验证</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide decide">
+    <div class="inner">
+      <p class="kick" data-i="s4kick">决策 · 给产品经理</p>
+      <h2 data-i="s4h">你到底该不该用 base-servers?</h2>
+      <p class="sub" data-i="s4sub">勾选和你相关的。没有抽象概念,只有你的实际处境。</p>
+      <div class="checks">
+        <label class="check"><input type="checkbox" class="sig"><span class="box"></span><span class="txt" data-i="q1">你在把<b>真权限交给 AI agent 或自动化</b>,让它操作你的数据或动作。</span></label>
+        <label class="check"><input type="checkbox" class="sig"><span class="box"></span><span class="txt" data-i="q2">你服务<b>不止一个客户、组织或租户。</b></span></label>
+        <label class="check"><input type="checkbox" class="sig"><span class="box"></span><span class="txt" data-i="q3">你正打算<b>从零搭账号、角色和权限校验。</b></span></label>
+        <label class="check"><input type="checkbox" class="sig"><span class="box"></span><span class="txt" data-i="q4">你要的是<b>可撤销、有边界的登录 + 委托</b>——不是一把静态 API key。</span></label>
+      </div>
+      <div class="verdict" id="verdict"><span class="vk" id="vk">勾上面</span><p id="vp">勾中和你相符的。命中越多,这就越是你要的那一层。</p></div>
+      <div class="skip">
+        <b data-i="skipb">这些情况,先别用</b>
+        <ul><li data-i="skip1">单租户、无 agent、无委托——一个登录页就够了。</li><li data-i="skip2">还没做出产品,身份还不是你的风险点。</li></ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <div class="inner">
+      <p class="kick" data-i="s5kick">现状</p>
+      <div class="status"><span class="pill">Alpha</span>
+        <p data-i="s5p">强制核心(Ring 0)已<b>对真 Keycloak + Postgres 端到端验证,无 mock</b>:三态一等主体、组织与角色、agent 委托、已认证且租户隔离的控制面、OIDC 登录、一键部署。尚未生产就绪——硬化、license、SDK 在后头。底层引擎可换,所以永不锁定单一厂商。</p></div>
+      <div class="cta"><a class="primary" data-i="cta1" href="https://github.com/SilasSolivagus/base-servers">上 GitHub 看 →</a><a class="ghost" data-i="cta2" href="https://github.com/SilasSolivagus/base-servers/blob/main/scripts/demo.sh">跑一遍 demo</a></div>
+      <p class="mk" data-i="mk">base-servers —— 搭你的应用,别搭 auth 层。</p>
+    </div>
+  </section>
+</div>
+
+<script>
+  document.querySelectorAll('a[href^="http"]').forEach(function(a){a.rel="noopener noreferrer";a.target="_blank";});
+  var CN={}, EN={
+    eyebrow:'Identity &amp; permissions · agent-native',
+    h1:'Give an AI agent real authority.<br><span class="hl">Keep the leash.</span>',
+    lede:'The identity &amp; permission layer for humans, services, and AI agents alike. <b>The hardest, most security-sensitive part of every system — done once, done right.</b>',
+    termnm:'money demo — the whole story, real stack, ~60s',
+    cap:'<span class="a">allowed</span> in scope · <span class="d">denied</span> out of scope · <span class="d">denied</span> beyond the granter · <span class="d">denied</span> seconds after revoke',
+    scroll:'scroll ↓',
+    s2kick:'The guarantee', s2h:"An agent's authority is bounded on five axes",
+    s2sub:"Hand an agent an API key and you've given away a permanent, over-privileged, unrevocable, unauditable credential. base-servers hands it something else.",
+    c1k:'scoped', c1v:'Only the exact actions the grant names.',
+    c2k:'time-boxed', c2v:'Short-lived; expires on its own.',
+    c3k:'revocable', c3v:'A kill-switch, effective in seconds.',
+    c4k:'attributable', c4v:'Every action traces to the agent and the person behind it.',
+    c5k:'≤ granter', c5v:'Can never exceed what the granter holds.',
+    s3kick:'The pitch', s3h:'Build this layer yourself, or just call it',
+    s3sub:"Every system rebuilds the same plumbing — and it's exactly the layer where a subtle bug becomes a breach.",
+    s3l:'You build &amp; maintain', r1:'Accounts · login · PKCE · sessions', r2:'Orgs · teams · memberships', r3:'Roles · permissions · ownership', r4:'Agent delegation · revocable · ≤ granter', r5:'Token signing · JWKS · rotation', r6:'Multi-tenant isolation · authn gate',
+    s3r:'You call one API', cl2:'+ a bearer token', cl3:'+ a few RPC calls', clr:'= everything on the left, tested on real infra',
+    s4kick:'The decision · for a PM', s4h:'Should you reach for base-servers?', s4sub:"Tick what's true for you. No abstractions — just your situation.",
+    q1:"You're giving <b>AI agents or automations</b> real authority over your data or actions.",
+    q2:'You serve <b>more than one customer, org, or tenant.</b>',
+    q3:"You're about to <b>build accounts, roles, and permission checks</b> from scratch.",
+    q4:'You need <b>login + delegation that’s revocable and bounded</b> — not a static API key.',
+    skipb:'Skip it (for now) if', skip1:'Single-tenant, no agents, no delegation — a login page is all you need.', skip2:"You're pre-product and identity isn't your risk surface yet.",
+    s5kick:'Where it stands',
+    s5p:'The mandatory core (Ring 0) is <b>built and verified end to end against real Keycloak + Postgres, no mocks</b>: three-type principals, orgs &amp; roles, agent delegation, an authenticated tenant-isolated control plane, OIDC login, one-command deploy. Not production-ready yet — hardening, license, and an SDK come next. The identity engine stays swappable, so you’re never locked to a vendor.',
+    cta1:'View on GitHub →', cta2:'Run the demo', mk:'base-servers — build the app, not the auth layer.'
+  };
+  // capture the inline Chinese as the CN dictionary
+  document.querySelectorAll('[data-i]').forEach(function(el){ CN[el.getAttribute('data-i')]=el.innerHTML; });
+  var V={ cn:{ vkNo:'勾上面', vkYes:'→ 用它', no:'勾中和你相符的。命中越多,这就越是你要的那一层。', yes1:'<b>这正是 base-servers 替你做掉的那一层。</b>自己动手前,值得先看一眼。', yes3:'<b>这正是 base-servers 替你做掉的那一层。</b>强匹配——不用它,你就得自己把这些重造一遍。' },
+          en:{ vkNo:'tick above', vkYes:'→ call it', no:'Check the ones that describe you. The more that land, the more this is your layer.', yes1:'<b>This is exactly the layer base-servers replaces.</b> Worth a look before you build it yourself.', yes3:'<b>This is exactly the layer base-servers replaces.</b> A strong fit — you’d otherwise rebuild most of it.' } };
+  var lang='cn';
+  function apply(dict){ document.querySelectorAll('[data-i]').forEach(function(el){ var k=el.getAttribute('data-i'); if(dict[k]!=null) el.innerHTML=dict[k]; }); }
+  function setLang(l){ lang=l; apply(l==='en'?EN:CN); document.documentElement.lang=(l==='en'?'en':'zh');
+    document.getElementById('b-cn').setAttribute('aria-pressed', l==='cn'); document.getElementById('b-en').setAttribute('aria-pressed', l==='en'); update(); }
+  var sigs=document.querySelectorAll('.sig'), v=document.getElementById('verdict'), vk=document.getElementById('vk'), vp=document.getElementById('vp');
+  function update(){ var n=0; sigs.forEach(function(s){if(s.checked)n++;}); var t=V[lang];
+    if(n>=1){ v.classList.add('yes'); vk.textContent=t.vkYes; vp.innerHTML=(n>=3?t.yes3:t.yes1); }
+    else{ v.classList.remove('yes'); vk.textContent=t.vkNo; vp.innerHTML=t.no; } }
+  sigs.forEach(function(s){s.addEventListener('change',update);}); update();
+</script>
+
+</body>
+</html>

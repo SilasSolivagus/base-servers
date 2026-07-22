@@ -13,6 +13,8 @@ Self-hosted. Multi-tenant. Standards-based. Stop rebuilding this layer in every 
 ![Tests](https://img.shields.io/badge/tests-green%20(real%20containers)-brightgreen)
 ![PRs](https://img.shields.io/badge/PRs-welcome-blueviolet)
 
+**▶ [See it live — base.dirctable.com](https://base.dirctable.com)** &nbsp;·&nbsp; the money-demo, and a "should you use it?" self-check
+
 </div>
 
 ---
