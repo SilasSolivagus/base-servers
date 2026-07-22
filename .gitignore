@@ -6,3 +6,4 @@ docs/superpowers/plans/
 
 # SDD 脚手架 + 会话 handoff 快照 — 本地,永不推送
 .superpowers/
+.gstack/
