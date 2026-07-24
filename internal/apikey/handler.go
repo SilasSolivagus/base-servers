@@ -63,7 +63,11 @@ func (h *Handler) Issue(ctx context.Context, req *connect.Request[v1.IssueApiKey
 		}
 	}
 	// per-principal active key cap (defense-in-depth).
-	if n, err := h.store.CountActive(ctx, m.PrincipalId); err == nil && n >= h.keyCap {
+	n, err := h.store.CountActive(ctx, m.PrincipalId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	if n >= h.keyCap {
 		return nil, denied("active key limit reached")
 	}
 	// I9: max-TTL policy.
