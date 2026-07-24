@@ -108,21 +108,6 @@ func runServer() {
 	authzStore := authz.NewStore(pool)
 	authzSvc := authz.NewService(authzStore)
 
-	// API key pepper fail-closed:未设/非法 base64/短于32字节 → 拒绝启动,绝不降级明文比较。
-	pepper, err := apikey.LoadPepper(cfg.APIKeyPepper)
-	if err != nil {
-		log.Fatalf("api key pepper: %v", err)
-	}
-	apikeyStore := apikey.NewStore(pool)
-	apikeyHasher, err := apikey.NewHasher(pepper)
-	if err != nil {
-		log.Fatalf("api key hasher: %v", err)
-	}
-	apikeyVerifier := apikey.NewVerifier(apikeyStore, apikeyHasher)
-
-	// prLimiter/onThrottle (Gate B) are wired in a later task; nil disables the gate for now.
-	authInterceptor := connect.WithInterceptors(authn.Interceptor(verifier, apikeyVerifier, cfg.RootToken, nil, nil))
-
 	auditStore := audit.NewStore(pool)
 	auditRec := audit.NewRecorder(auditStore, cfg.AuditBuffer)
 	// 审计排干的取消与信号 ctx 解耦:必须在 srv.Shutdown 返回(所有在途请求
@@ -134,6 +119,21 @@ func runServer() {
 		auditRec.Run(auditCtx)
 		close(auditDone)
 	}()
+
+	// API key pepper fail-closed:未设/非法 base64/短于32字节 → 拒绝启动,绝不降级明文比较。
+	pepper, err := apikey.LoadPepper(cfg.APIKeyPepper)
+	if err != nil {
+		log.Fatalf("api key pepper: %v", err)
+	}
+	apikeyStore := apikey.NewStore(pool)
+	apikeyHasher, err := apikey.NewHasher(pepper)
+	if err != nil {
+		log.Fatalf("api key hasher: %v", err)
+	}
+	apikeyVerifier := apikey.NewVerifier(apikeyStore, apikeyHasher, auditRec)
+
+	// prLimiter/onThrottle (Gate B) are wired in a later task; nil disables the gate for now.
+	authInterceptor := connect.WithInterceptors(authn.Interceptor(verifier, apikeyVerifier, cfg.RootToken, nil, nil))
 
 	signer := delegation.NewSigner(cfg.DelegationIssuer, keyMgr.Keyset)
 	delStore := delegation.NewStore(pool)
