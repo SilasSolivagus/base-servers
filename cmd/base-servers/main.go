@@ -120,7 +120,8 @@ func runServer() {
 	}
 	apikeyVerifier := apikey.NewVerifier(apikeyStore, apikeyHasher)
 
-	authInterceptor := connect.WithInterceptors(authn.Interceptor(verifier, apikeyVerifier, cfg.RootToken))
+	// prLimiter/onThrottle (Gate B) are wired in a later task; nil disables the gate for now.
+	authInterceptor := connect.WithInterceptors(authn.Interceptor(verifier, apikeyVerifier, cfg.RootToken, nil, nil))
 
 	auditStore := audit.NewStore(pool)
 	auditRec := audit.NewRecorder(auditStore, cfg.AuditBuffer)

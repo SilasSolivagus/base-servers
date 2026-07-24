@@ -47,7 +47,7 @@ func TestInterceptorApiKeyBranchSetsCaller(t *testing.T) {
 // nil *Verifier would panic, so a clean Unauthenticated (no panic) is itself
 // part of the proof.
 func TestInterceptorApiKeyInvalidFailsClosedNoFallback(t *testing.T) {
-	ic := Interceptor(nil, fakeAK{err: errors.New("bad")}, "")
+	ic := Interceptor(nil, fakeAK{err: errors.New("bad")}, "", nil, nil)
 	next := connect.UnaryFunc(func(ctx context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
 		t.Fatal("next should not be called for an invalid api key")
 		return connect.NewResponse(&emptypb.Empty{}), nil
@@ -100,7 +100,7 @@ func newTestHandlerServer(t *testing.T, procedure string, ic connect.Interceptor
 // read-only API key can call a real read-safe procedure end-to-end.
 func TestInterceptorReadOnlyGateAllowsReadSafeProcedure(t *testing.T) {
 	procedure := "/baseservers.v1.AuthzService/Check"
-	ic := Interceptor(nil, fakeAK{pid: "p1", ro: true}, "")
+	ic := Interceptor(nil, fakeAK{pid: "p1", ro: true}, "", nil, nil)
 	client, closeSrv := newTestHandlerServer(t, procedure, ic)
 	defer closeSrv()
 
@@ -116,7 +116,7 @@ func TestInterceptorReadOnlyGateAllowsReadSafeProcedure(t *testing.T) {
 // end-to-end through WrapUnary.
 func TestInterceptorReadOnlyGateDeniesMutation(t *testing.T) {
 	procedure := "/baseservers.v1.PrincipalService/CreatePrincipal"
-	ic := Interceptor(nil, fakeAK{pid: "p1", ro: true}, "")
+	ic := Interceptor(nil, fakeAK{pid: "p1", ro: true}, "", nil, nil)
 	client, closeSrv := newTestHandlerServer(t, procedure, ic)
 	defer closeSrv()
 
@@ -133,7 +133,7 @@ func TestInterceptorReadOnlyGateDeniesMutation(t *testing.T) {
 // call the same mutation procedure a read-only key was denied above.
 func TestInterceptorReadOnlyGateDoesNotBlockWritableKey(t *testing.T) {
 	procedure := "/baseservers.v1.PrincipalService/CreatePrincipal"
-	ic := Interceptor(nil, fakeAK{pid: "p1", ro: false}, "")
+	ic := Interceptor(nil, fakeAK{pid: "p1", ro: false}, "", nil, nil)
 	client, closeSrv := newTestHandlerServer(t, procedure, ic)
 	defer closeSrv()
 

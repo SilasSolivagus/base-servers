@@ -5,9 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
+
+	"github.com/SilasSolivagus/base-servers/internal/ratelimit"
 )
 
 // apikeyPrefix identifies a base-servers API key token (as opposed to an
@@ -47,14 +51,19 @@ var errReadOnly = errors.New("read-only credential may not perform this operatio
 // calls fail closed instead.
 var errStreamingUnsupported = fmt.Errorf("unauthenticated: streaming RPCs are not supported by this authn interceptor")
 
+// errRateLimited is returned when a caller's per-principal token bucket (Gate B) is exhausted.
+var errRateLimited = errors.New("rate limit exceeded")
+
 // interceptor 认证每个 Connect RPC:X-BS-Root-Token(→ SystemAdmin)、
 // Authorization: Bearer bsk_...(→ API key,exclusive/fail-closed,见 authenticate)、
 // 或 Authorization: Bearer <keycloak token>。都无/都验证失败 → Unauthenticated。
 // 只做 authn;能力/成员/委托授权由各 handler 做,只读密钥的过程白名单门在此拦截。
 type interceptor struct {
-	v         *Verifier
-	ak        APIKeyVerifier
-	rootBytes []byte
+	v          *Verifier
+	ak         APIKeyVerifier
+	rootBytes  []byte
+	prLimiter  ratelimit.Limiter
+	onThrottle ThrottleHook
 }
 
 // Interceptor returns a connect.Interceptor enforcing authn on unary RPCs
@@ -62,9 +71,11 @@ type interceptor struct {
 // none of the current RPCs stream and a future one must not mount silently
 // unauthenticated. ak may be nil, in which case the bsk_ API-key branch is
 // disabled and such tokens fall through to errAnonymous/errInvalidToken like
-// any other malformed bearer credential.
-func Interceptor(v *Verifier, ak APIKeyVerifier, rootToken string) connect.Interceptor {
-	return &interceptor{v: v, ak: ak, rootBytes: []byte(rootToken)}
+// any other malformed bearer credential. prLimiter, when non-nil, enforces
+// Gate B (post-auth, per-principal); pass nil to disable it. onThrottle, when
+// non-nil, is invoked once per throttle-cooldown transition.
+func Interceptor(v *Verifier, ak APIKeyVerifier, rootToken string, prLimiter ratelimit.Limiter, onThrottle ThrottleHook) connect.Interceptor {
+	return &interceptor{v: v, ak: ak, rootBytes: []byte(rootToken), prLimiter: prLimiter, onThrottle: onThrottle}
 }
 
 // authenticate resolves a Caller from request headers, or returns a connect
@@ -105,6 +116,22 @@ func (ic *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		c, err := ic.authenticate(ctx, req.Header())
 		if err != nil {
 			return nil, err
+		}
+		// Gate B: per-principal token bucket, post-auth. Root bypasses entirely
+		// (break-glass). Keyed by principalID ONLY (no AuthMethod) so the same
+		// principal reached via oidc + apikey shares one bucket, not two.
+		if c.AuthMethod != "root" && ic.prLimiter != nil && c.PrincipalID != "" {
+			ok, retry, transitioned := ic.prLimiter.Allow("pr:" + c.PrincipalID)
+			if !ok {
+				if transitioned && ic.onThrottle != nil {
+					ic.onThrottle(ctx, ThrottleEvent{Gate: "principal", PrincipalID: c.PrincipalID, AuthMethod: c.AuthMethod, Reason: "rate_limited"})
+				}
+				err := connect.NewError(connect.CodeResourceExhausted, errRateLimited)
+				if retry > 0 {
+					err.Meta().Set("Retry-After", strconv.Itoa(int((retry+time.Second-1)/time.Second)))
+				}
+				return nil, err
+			}
 		}
 		if c.ReadOnly && !IsReadSafe(req.Spec().Procedure) {
 			return nil, connect.NewError(connect.CodePermissionDenied, errReadOnly)

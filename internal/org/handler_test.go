@@ -22,7 +22,7 @@ func TestOrgHandlerCreateAndTeam(t *testing.T) {
 	orgStore := org.NewStore(pool)
 	svc := org.NewService(orgStore, role.NewStore(pool))
 	mux := http.NewServeMux()
-	org.NewHandler(svc, orgStore, audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, nil, testsupport.RootToken)))
+	org.NewHandler(svc, orgStore, audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, nil, testsupport.RootToken, nil, nil)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
@@ -48,7 +48,7 @@ func TestOrgHandlerRejectsEmpty(t *testing.T) {
 	orgStore := org.NewStore(pool)
 	svc := org.NewService(orgStore, role.NewStore(pool))
 	mux := http.NewServeMux()
-	org.NewHandler(svc, orgStore, audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, nil, testsupport.RootToken)))
+	org.NewHandler(svc, orgStore, audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, nil, testsupport.RootToken, nil, nil)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	c := baseserversv1connect.NewOrgServiceClient(http.DefaultClient, srv.URL, testsupport.ClientOpts()...)
