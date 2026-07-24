@@ -31,13 +31,13 @@
 | R4 | 存储 & 有界 | **每副本内存,sharded(256 分片,FNV(key)%256,每分片各自 `sync.Mutex`)+ 每分片定容 LRU(硬上限)**;藏 `Limiter` 接口后;集群有效上限 = 配置 × 副本数(文档化) | **[评审 I5:分片 + 硬上限是强制的,非"必要时"]** —— 单锁 = 限流器自己成最热竞争点(正是要防的);无上限 map 在百万-IP 喷洒下 OOM = 限流器把进程 DoS。定容 LRU 使内存与攻击基数无关(达上限即 fail-open miss——这正是 R2 全局桶作真后盾的原因)。Postgres-共享后端留 v2,藏同一接口后;**不引 Redis** |
 | R5 | 失败语义 | **fail-open**;`Limiter.Allow` **不返回 error**(内部故障即当 allowed) | 限流保可用性,不能把自身故障升级成对合法请求的拒绝(否则送更好的 DoS)。内存实现本无"后端不可用"态,但把语义焊进接口,防 v2 DB 后端意外引入 fail-closed |
 | R6 | Gate B **键 & 预算** | **只按 `principalID` 分桶**(键不含 AuthMethod);**单一 per-principal 预算**(一档 rps/burst)。per-AuthMethod 分级预算**推后** | **[评审 I6:按 (authMethod,principalID) 分桶 → 同一 principal 经 oidc+apikey 两路可拿 2× 预算,双花绕过"被盗 agent"爆炸半径控制]**。apikey 绑的 principal 与 oidc sub 同命名空间、可重叠,故只按 principalID 分桶(爆炸半径正确、无双花)。方法分级预算无遥测=瞎猜,连同校准一起推后 |
-| R7 | 豁免 | **有效 root-token(break-glass)跳两门**;抽出共享 `ValidRootToken(header) bool`(常量时间)供 Gate A 中间件与拦截器**同一处**判定 | **[评审 I7:root 检测现藏在 authenticate 内;前置 Gate A 需共享校验器,绝不能退化成"有 header 就跳"——那样任意 X-BS-Root-Token 值都能逃 Gate A]**。只在**有效**时跳,无效落 Gate A。精确 keyed 在 root-token 路径,非泛 SystemAdmin |
+| R7 | 豁免 | **有效 root-token(break-glass)跳两门**;抽出共享 `CheckRoot(header) (present, valid bool)`(定义在 `internal/authn`,裸函数,常量时间)供 Gate A 中间件与拦截器**同一处**判定。**必须焊回现有拦截器的两道护栏**:仅当(已配置 root token,即 `len(rootBytes)>0`)**且**(header 非空 `rt!=""`)才做 `ConstantTimeCompare`;否则 `valid=false`。`present = rt!=""` | **[评审 I7 + 二审 Critical:草图丢了两道护栏 → `BS_ROOT_TOKEN` 未设(裸/默认部署常态)时空 header 的 `ConstantTimeCompare("","")==1` → valid=true → 每请求跳 Gate A、限流器出厂即空转]**。只在 present&&valid 时跳;无效落 Gate A。精确 keyed 在 root-token 路径,非泛 SystemAdmin |
 | R8 | 响应 | Gate A(中间件):HTTP **429 + `Retry-After`**(秒,已验证经 Caddy 到客户端)。Gate B(拦截器):`connect.CodeResourceExhausted`,Retry-After 走 `connect.Error.Meta()`(best-effort,**实现期端到端验证经 Caddy 是否落成真 `Retry-After` 头**,不成则接受仅 code) | **[评审 C3 must-verify]**:实现第一步用 curl 经 bundled Caddy 验证头名恰为 `Retry-After`;不成则 Gate B 也降到 HTTP 中间件层或只保 code |
 | R9 | 被限流审计(边沿+去抖) | `ratelimit.throttled` 只在 per-key **进入被限流态边沿**发,且**每 key 冷却窗(默认 60s)去抖**:`entry.lastEmit`,`now-lastEmit>cooldown` 才发;经既有异步 best-effort recorder | **[评审 I2:纯边沿在稳态过载下震荡 allow/deny → 每秒约 rps 次转变/key,跨多 key 淹掉共享 recorder,真安全事件被丢]**。冷却窗把审计量封到 `keys/cooldown`,与 rps 无关。`lastEmit`/`wasLimited` 读改写必须在与桶操作**同一分片锁**内 |
 | R10 | 审计事件的租户归属 | Gate A(认证前无 Caller)事件走 **"system" 链**(`OrgID=""`,adapter **不**调 `CallerFromContext`),Actor 空;Detail 记 **IP 前缀**(v6/64、v4/24,非全地址)+ gate/reason。Gate B 记 `principalID`(Actor 经 hook 显式传,非 ctx 取) | **[评审 I4:Gate A 事件无 principal/org,而审计是每租户;且原始 IP 进永久防篡改日志是 PII]**。系统链已存在(`ChainOf("")="system"`)。IP 前缀既留 ops 溯源信号又降 PII/永久留存面 |
 | R11 | apikey.auth 遥测(1+3 折入,分级保真) | `apikey.Verifier` 加 `audit.Recorder`。**已知-keyid 失败(mismatch/revoked/expired)= 真攻击信号 → 全保真发** `apikey.auth` denied;**未知-keyid = 高基数噪声 → 独立去抖/采样**(周期发一条聚合计数,而非每次随机 miss 一条);secret 段解析后即弃、detail 只非密 keyid(前缀);成功认证不发 | **[评审 I3:R9 无独立封顶,靠"Gate A 天然封顶"是循环论证(仅在 C2 说是错的那个退化默认下成立);未知-keyid 随机喷洒是纯噪声,会饿死审计缓冲]**。apikey 已 import audit(authn 不 import apikey,无环) |
-| R12 | 失败 root-token 遥测 | 失败的 root-token 尝试发 `root.auth` denied(去抖,同 R9 缓冲安全) | **[评审 I7 gap:爆破全局 break-glass 密钥是全系统最高信号事件,当前不可见]** |
-| R13 | 配置 | `BS_RATELIMIT_ENABLED`(杀开关,默认 true);`BS_RATELIMIT_IP_RPS/_BURST`、`BS_RATELIMIT_GLOBAL_RPS/_BURST`(Gate A);`BS_RATELIMIT_PRINCIPAL_RPS/_BURST`(Gate B);`BS_RATELIMIT_TRUSTED_PROXY_CIDRS`(信任代理网段,默认含 compose 网关/loopback);`BS_RATELIMIT_MAX_KEYS`(每分片 LRU 容量);冷却窗常量。**不建 `rate_limits` 表** | 最小可用 + 杀开关(谁的部署里抽风可无逻辑改动关掉)。per-subject 策略表是产品版限流,零需求,YAGNI,真需求出现再建、藏 `Allow(key)` 接口后 |
+| R12 | 失败 root-token 遥测 | **仅当 `present && !valid`**(带了 header 但错,非"没带")发 `root.auth` denied,去抖(同 R9 缓冲安全);**只在 Gate A 中间件发一次**(它最先看 header 且决定 Gate A 跳/不跳),拦截器不重发 | **[评审 I7 gap + 二审:裸 bool 分不清 absent/invalid → 每个正常 OIDC 请求(无 header)都发会淹审计;中间件+拦截器都判会双发。故用 `present` 信号 + 单一发射层]**。爆破全局 break-glass 密钥是全系统最高信号事件 |
+| R13 | 配置 | `BS_RATELIMIT_ENABLED`(杀开关,默认 true);`BS_RATELIMIT_IP_RPS/_BURST`(Gate A per-IP,常态公平,默认如 20/40);`BS_RATELIMIT_GLOBAL_RPS/_BURST`(Gate A 全局**灾难后盾**,**默认必须远高于全副本合法聚合峰值**,如 500/1000 —— 只作 DB 保护上限,绝非主限流,数值文档明确此意);`BS_RATELIMIT_PRINCIPAL_RPS/_BURST`(Gate B,默认如 10/20);`BS_RATELIMIT_TRUSTED_PROXY_CIDRS`(信任代理网段,默认含 compose 网关/loopback);`BS_RATELIMIT_MAX_KEYS`(每分片 LRU 容量,默认如 4096);冷却窗常量(默认 60s)。**不建 `rate_limits` 表** | 最小可用 + 杀开关。**[二审:全局桶计全部流量,默认值未定则实现者随手设小 → 车队正常峰值被全局节流饿死所有租户;必须写死"后盾非主限流"的量级]**。per-subject 策略表 YAGNI,真需求出现再建、藏 `Allow(key)` 接口后 |
 | R14 | 源 IP & 信任代理 | 默认取 `http.Request.RemoteAddr` 的 host;**仅当 RemoteAddr ∈ `TRUSTED_PROXY_CIDRS`** 时取 `X-Forwarded-For` **最左**客户端 IP;否则用 RemoteAddr。**bundled Caddy 配置为设/覆盖 XFF**(本模块交付物之一) | **[评审 C2:默认 XFF-off 时 bundled Caddy 后 per-IP 塌成全局单桶——出厂即坏;盲信 XFF 又让裸部署被伪造]**。信任代理模型:网关后 peer=网关 IP(∈ 可信网段)→ 读 XFF;裸部署 peer=真客户端→用 peer。安全默认两头都对 |
 
 ---
@@ -52,10 +52,10 @@
    │  ipLim.Allow("ip:"+prefix(clientIP)) 不过 → 429+Retry-After (→hook)       │
    │        ↓ 放行                                                             │
    │  ┌─ Connect WrapUnary(拦截器)────────────────────────────────────────┐   │
-   │  │ ValidRootToken? → Caller{SystemAdmin,AuthMethod:root}, 跳 Gate B    │   │
+   │  │ rootPresent&&Valid? → Caller{SystemAdmin,AuthMethod:root}, 跳 Gate B│   │
    │  │ authenticate(oidc / apikey.Verify)→ Caller                         │   │
    │  │     apikey 失败 → Verifier 发 apikey.auth(R11:已知全保真/未知采样)  │   │
-   │  │     root-token 无效尝试 → root.auth denied(R12)                    │   │
+   │  │     (root.auth denied 只在中间件发一次,见 R12,拦截器不重发)        │   │
    │  │ [Gate B] prLim.Allow("pr:"+principalID) 不过 → ResourceExhausted    │   │
    │  │     +Retry-After(meta,best-effort)(edge+cooldown→hook)            │   │
    │  │ ReadOnly 门(既有)→ next                                            │   │
@@ -85,25 +85,28 @@ type Limiter interface {
 - `Close()` 停任何后台;LRU 定容替代了独立驱逐 goroutine(无长尾 map 增长,故可不要 evictor;若保留 evictor 须 `Close()` 可停,R-minor M4)。
 - `AllowAll{}`:`Allow` 恒 `(true,0,false)`(杀开关/门关时用,避免 nil 判散落)。
 
-### 4.2 Gate A —— 外层 HTTP 中间件(新,`internal/authn` 或 `internal/server`)
-- `func RateLimitMiddleware(next http.Handler, cfg GateAConfig) http.Handler`,`GateAConfig{ IPLim, GlobalLim Limiter; TrustedProxies []*net.IPNet; ValidRoot func(http.Header) bool; OnThrottle ThrottleHook }`。
-- 逻辑:`ip := clientIP(r, TrustedProxies)`(R14);`if ValidRoot(r.Header) { next.ServeHTTP; return }`;`if a,ra,tr := GlobalLim.Allow("global"); !a { reject(w, ra, tr, ThrottleEvent{Gate:"global"}) ; return }`;同理 `IPLim.Allow("ip:"+ipKey(ip))`(ipKey=v6/64、v4/32 前缀);放行 `next.ServeHTTP`。
+### 4.2 Gate A —— 外层 HTTP 中间件(**中间件放 `internal/server`,共享 `CheckRoot` 裸函数放 `internal/authn`**;`server→authn` 单向无环)
+- `func RateLimitMiddleware(next http.Handler, cfg GateAConfig) http.Handler`,`GateAConfig{ IPLim, GlobalLim Limiter; TrustedProxies []*net.IPNet; CheckRoot func(http.Header)(present,valid bool); OnThrottle ThrottleHook }`。
+- 逻辑:① **health 放行**见下(先判,免落限流)。② `present, valid := CheckRoot(r.Header)`;`if present && !valid { OnThrottle(root.auth denied,去抖) }`(R12,只此一处发);`if present && valid { next.ServeHTTP; return }`(break-glass 跳 Gate A)。③ `ip := clientIP(r, TrustedProxies)`(R14);`if a,ra,tr := GlobalLim.Allow("global"); !a { reject(...) }`;`if a,ra,tr := IPLim.Allow("ip:"+ipKey(ip)); !a { reject(...) }`(ipKey=v6/64、v4/32 前缀);放行 `next.ServeHTTP`。
 - `reject`:`w.Header().Set("Retry-After", strconv.Itoa(ceilSec(ra)))`;`w.WriteHeader(429)`;若 `tr` 调 `OnThrottle`(best-effort,不阻塞)。
 - `clientIP`:解析 `RemoteAddr`(带 port、IPv6)稳健;RemoteAddr∈TrustedProxies 时取 XFF 最左、strip 空格、校验是合法 IP,失败回落 RemoteAddr;**绝不 panic**(R-minor M3)。
-- **放行 health**:中间件对 `/healthz`、`/readyz` 直接 `next`(不限流)。
+- **health 放行(精确)**:仅 `/healthz`(纯静态、不打后端)对**所有**桶放行。**`/readyz` 不对全局桶豁免** —— 二审发现:`/readyz` 的 ready 闭包每击都 `pool.Ping`(Postgres)+ `keycloakReachable`(Keycloak 往返),正是 Gate A 要挡的认证前 DB/上游放大;豁免它 = 亲手重开洞。`/readyz` 仍过全局桶 + per-IP 桶(廉价、只挡洪水);或(可选)让 readiness 缓存结果不每击真打后端。§7 加"洪水 /readyz 不放大 DB/Keycloak"断言。
 
 ### 4.3 Gate B —— Connect 拦截器(改 `internal/authn/interceptor.go`)
 - `Interceptor(...)` 增依赖:`prLimiter Limiter`、`onThrottle ThrottleHook`。nil ⇒ 门关。
-- `WrapUnary`:① `ValidRootToken(header)` 有效 → `Caller{SystemAdmin,AuthMethod:root}`,跳 Gate B、跳 ReadOnly?(root 全权),next。② `authenticate`(内部 root 分支删除或改为复用 `ValidRootToken`——单一真相,R7)。③ Gate B:`a,ra,tr := prLimiter.Allow("pr:"+caller.PrincipalID)`;`!a` → `err := connect.NewError(CodeResourceExhausted,...)`;`err.Meta().Set("Retry-After", ...)`(R8 best-effort);`tr` → onThrottle(gate=principal, principalID, authMethod);return err。④ ReadOnly 门(不变)。⑤ next。
+- `WrapUnary`:① `_, valid := CheckRoot(header)`;valid → `Caller{SystemAdmin,AuthMethod:root}`,跳 Gate B、跳 ReadOnly(root 全权),next(**拦截器不发 root.auth;那由中间件唯一发**,R12)。② `authenticate`(内部 root 分支**改为复用 `CheckRoot`**——单一真相,R7,不再各判各的)。③ Gate B:`a,ra,tr := prLimiter.Allow("pr:"+caller.PrincipalID)`;`!a` → `err := connect.NewError(CodeResourceExhausted,...)`;`err.Meta().Set("Retry-After", ...)`(R8 best-effort);`tr` → onThrottle(gate=principal, principalID, authMethod);return err。④ ReadOnly 门(不变)。⑤ next。
 - `ThrottleHook`(**定义在 authn,避免 authn→audit 环**):`type ThrottleEvent struct{ Gate, Key, IPPrefix, PrincipalID, AuthMethod, Reason string }; type ThrottleHook func(ctx context.Context, ev ThrottleEvent)`。
 
 ### 4.4 apikey.auth + root.auth 遥测(R11/R12)
-- `apikey.Verifier` 加 `rec audit.Recorder` + 一个未知-keyid **采样器**(计数 + 周期 flush 或每 keyid-前缀冷却)。`Verify` 失败:已知-keyid 类(hash 不符/已吊销/已过期)每次发 `apikey.auth` denied(detail{reason}、非密 keyid);未知-keyid 类走采样(周期发 `apikey.auth` denied detail{reason:"unknown", count:N})。secret 绝不入 detail。
-- root.auth(R12):`ValidRootToken` 失败时(经拦截器/中间件的一处)去抖发 `root.auth` denied。发射同样经注入 hook 或(在能 import audit 的层)直接 recorder——**注意 authn 不能 import audit**,故 root.auth 也走注入 hook,由 main 适配。
+- `apikey.Verifier` 加 `rec audit.Recorder` + 一个未知-keyid 采样器。`Verify` 失败分级:
+  - **已知-keyid 类**(解析出 DB 内存在的 keyid、但 hash 不符/已吊销/已过期)——DB 内有界、是真攻击信号,**每次全保真**发 `apikey.auth` denied(detail{reason, keyid 前缀}、非密)。
+  - **未知-keyid 类**(keyid 不在 DB)——**攻击者可控的高基数**,**强制"单个原子聚合计数器 + 周期 flush"**:`atomic.AddInt64(&unknownCount,1)`,后台每 T(如 10s)若 count>0 发一条 `apikey.auth` denied detail{reason:"unknown", count:N} 并清零。**禁止 per-keyid-前缀 map/冷却**(二审:那是攻击者可撑爆的无界 map,采样器自己成 DoS 面)。计数器 atomic、flush goroutine 用注入时钟且 `Close()` 可停(测试 -race)。
+  - secret 段解析后即弃,绝不入任何 detail。成功认证不发。
+- root.auth(R12):**只在 Gate A 中间件、且 `present && !valid` 时**去抖发 `root.auth` denied(单一发射层,拦截器不重发)。**authn/server 不能 import audit**,故经注入 hook 由 main 适配成 recorder 调用。
 
 ### 4.5 装配(改 `cmd/base-servers/main.go` + `internal/config` + `deploy/Caddyfile`)
 - config:R13 全部 env。
-- main:构造 `ipLim/globalLim/prLim`(ENABLED=false 则用 `AllowAll{}`);解析 `TRUSTED_PROXY_CIDRS`;共享 `validRoot := func(h)bool{ subtle.ConstantTimeCompare(...) }`(与拦截器同一函数);`throttleHook := func(ctx,ev){ auditRec.Record(map ev→audit.Event) }`(Gate=global/ip→system 链 OrgID="";Gate=principal→ActorID=ev.PrincipalID);`server.New(...)` 外面包 `RateLimitMiddleware`;拦截器传 prLim+hook+validRoot;`apikey.NewVerifier(store,hasher,auditRec, sampler)`。
+- main:构造 `ipLim/globalLim/prLim`(ENABLED=false 则全用 `AllowAll{}`);解析 `TRUSTED_PROXY_CIDRS`;`authn.CheckRoot`(带 R7 两道护栏,拦截器与中间件同一函数);`throttleHook := func(ctx,ev){ auditRec.Record(map ev→audit.Event) }`(Gate=global/ip 或 root.auth→system 链 `OrgID=""`、不调 CallerFromContext;Gate=principal→`ActorID=ev.PrincipalID`);`server.New(...)` 外包 `RateLimitMiddleware`;拦截器传 prLim+hook;`apikey.NewVerifier(store,hasher,auditRec)`(采样器在 Verifier 内部,`Close()` 交 main 的 shutdown)。
 - **deploy/Caddyfile**:配置 reverse_proxy 设/覆盖 `X-Forwarded-For` 为真实客户端(Caddy 默认即追加),并确保 base-servers 容器视 Caddy 为可信(compose 网关 IP ∈ 默认 `TRUSTED_PROXY_CIDRS`)。文档说明裸部署(无网关)默认用 peer。
 
 ---
@@ -138,10 +141,11 @@ type Limiter interface {
 - **信任代理 IP(锁 C2/R14)**:RemoteAddr∈可信网段→按 XFF 最左分桶;∉→用 peer(伪造 XFF 无效);裸部署(peer=客户端)正确;malformed XFF/RemoteAddr 回落不 panic(M3)。
 - **Retry-After 端到端(锁 C3)**:经 bundled Caddy curl,断言 429 响应含真 `Retry-After` 头(Gate A);Gate B 至少回 `CodeResourceExhausted`(Retry-After 头达成则加断言,否则文档记为已知限制)。
 - **Gate B per-principal(锁 I6)**:同 principalID 超限 → ResourceExhausted;不同 principal 独立;**同一 principalID 经 oidc 与 apikey 两路共用一个桶(无 2× 双花)**。
-- **root 豁免 & 单一真相(锁 I7)**:有效 root 超任何量不被限(跳两门);**无效/伪造 X-BS-Root-Token 不跳 Gate A**(落限流);拦截器与中间件用同一 `ValidRootToken`(改一处两处同变)。
+- **root 豁免 & 单一真相 & 出厂安全(锁 I7 + 二审 Critical)**:有效 root 超任何量不被限(跳两门);**无效/伪造 X-BS-Root-Token 不跳 Gate A**(落限流);**`BS_ROOT_TOKEN` 未配置(空)时,不带 header 的普通请求 `CheckRoot` 返回 (present=false,valid=false) → 不跳 Gate A**(证明空 token 不致限流器出厂空转);拦截器与中间件用同一 `authn.CheckRoot`(改一处两处同变)。
+- **/readyz 不放大(二审发现3)**:洪水打 `/readyz` 被 Gate A 全局桶/per-IP 桶挡住(证明超限的 /readyz 请求不再触达 `pool.Ping`/`keycloakReachable`);`/healthz` 纯静态放行不受限。
+- **root.auth 遥测(R12)**:`present && !valid`(带错 token)去抖发一条 denied;**不带 header 的正常请求不发**(证明不淹);中间件发、拦截器不重发(单条)。
 - **审计边沿+去抖+租户(锁 I2/I4/R10)**:同 key 稳态过载,`ratelimit.throttled` 每冷却窗 ≤1 条(FakeRecorder-hook 断言);Gate A 事件走 system 链(OrgID="")、Actor 空、detail 记 IP **前缀**非全址、不调 CallerFromContext;Gate B 记 principalID。
-- **apikey.auth 分级(锁 I3/R11)**:已知-keyid 失败(mismatch/revoked/expired)每条发、detail 无 secret;未知-keyid 洪水下**采样聚合**(不是每 miss 一条)、不淹缓冲(注入满缓冲证明丢弃不阻塞);成功不发。
-- **root.auth(R12)**:失败 root 尝试去抖发一条 denied。
+- **apikey.auth 分级(锁 I3/R11)**:已知-keyid 失败(mismatch/revoked/expired)每条发、detail 无 secret;未知-keyid 洪水下走**单原子计数器 + 周期 flush**(发聚合 count、非每 miss 一条、无 per-prefix map)、不淹缓冲(注入满缓冲证明丢弃不阻塞);采样器 `Close()` 可停、-race 干净;成功不发。
 - **杀开关**:`ENABLED=false` → 两门全放行(AllowAll)。
 - **既有全绿**:改 `Interceptor`/`NewVerifier` 签名后 authn/apikey/各 handler 测试仍通过;health 不被限流。
 - 全量 `go test ./...`(真 Keycloak+Postgres);`internal/ratelimit -race`。提交署名 Silas、无 cc trailer;精确 `git add`。
