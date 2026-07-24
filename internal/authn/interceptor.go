@@ -2,7 +2,6 @@ package authn
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net/http"
@@ -74,11 +73,8 @@ func Interceptor(v *Verifier, ak APIKeyVerifier, rootToken string) connect.Inter
 // and never falls through to the Keycloak verifier.
 func (ic *interceptor) authenticate(ctx context.Context, h http.Header) (Caller, error) {
 	// 1) root-token(仅当已配置)
-	if len(ic.rootBytes) > 0 {
-		if rt := h.Get("X-BS-Root-Token"); rt != "" &&
-			subtle.ConstantTimeCompare([]byte(rt), ic.rootBytes) == 1 {
-			return Caller{SystemAdmin: true, AuthMethod: "root"}, nil
-		}
+	if _, valid := CheckRoot(h, ic.rootBytes); valid {
+		return Caller{SystemAdmin: true, AuthMethod: "root"}, nil
 	}
 	// 2) bearer token
 	auth := h.Get("Authorization")
