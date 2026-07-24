@@ -46,6 +46,42 @@ func TestVerifierAcceptsValidRejectsAll(t *testing.T) {
 	}
 }
 
+// TestVerifierRejectsWrongSecretForKnownKeyID reaches the h.Equal(secret,
+// rec.Hash) mismatch branch in Verify specifically -- as opposed to the
+// "tampered" case in TestVerifierAcceptsValidRejectsAll, which corrupts the
+// CRC region and so is rejected earlier by Parse and never reaches
+// ConstantTimeCompare. Here the presented token is well-formed (valid
+// prefix/shape/CRC, so Parse succeeds) and its keyID is known (so
+// GetByKeyID succeeds), but the stored hash was computed over a DIFFERENT
+// secret than the one embedded in the token -- proving the credential-
+// guessing path (right keyID, wrong secret) is rejected by the hash
+// comparison itself, not by an earlier guard.
+func TestVerifierRejectsWrongSecretForKnownKeyID(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	store := apikey.NewStore(pool)
+	pepper, _ := apikey.LoadPepper(base64.StdEncoding.EncodeToString(make([]byte, 32)))
+	h, _ := apikey.NewHasher(pepper)
+	v := apikey.NewVerifier(store, h)
+	ctx := context.Background()
+
+	// A fresh, well-formed token: valid prefix/shape and a correctly
+	// recomputed CRC over its own keyID+secret, so Parse succeeds.
+	pt, keyID, _, err := apikey.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Insert a record under that SAME keyID, but hash a secret that is NOT
+	// the one embedded in pt. GetByKeyID will find the record; only
+	// h.Equal(secret, rec.Hash) can catch the mismatch.
+	if err := store.Insert(ctx, apikey.NewKey{KeyID: keyID, PrincipalID: "p1", OrgID: "o1", Hash: h.Hash("some-OTHER-secret")}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := v.Verify(ctx, pt); err != apikey.ErrInvalidKey {
+		t.Fatalf("wrong-secret for known keyid must be ErrInvalidKey (hash-mismatch branch), got %v", err)
+	}
+}
+
 func TestVerifierRejectsExpired(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	store := apikey.NewStore(pool)
