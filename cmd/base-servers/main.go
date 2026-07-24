@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,6 +24,7 @@ import (
 	"github.com/SilasSolivagus/base-servers/internal/migrate"
 	"github.com/SilasSolivagus/base-servers/internal/org"
 	"github.com/SilasSolivagus/base-servers/internal/principal"
+	"github.com/SilasSolivagus/base-servers/internal/ratelimit"
 	"github.com/SilasSolivagus/base-servers/internal/role"
 	"github.com/SilasSolivagus/base-servers/internal/server"
 	"github.com/SilasSolivagus/base-servers/internal/signingkey"
@@ -132,8 +135,38 @@ func runServer() {
 	}
 	apikeyVerifier := apikey.NewVerifier(apikeyStore, apikeyHasher, auditRec)
 
-	// prLimiter/onThrottle (Gate B) are wired in a later task; nil disables the gate for now.
-	authInterceptor := connect.WithInterceptors(authn.Interceptor(verifier, apikeyVerifier, cfg.RootToken, nil, nil))
+	// Two-gate rate limiting: Gate A (pre-auth, per-IP + global backstop, wraps the mux
+	// below) and Gate B (post-auth, per-principal, in the authn interceptor). Kill switch:
+	// BS_RATELIMIT_ENABLED=false swaps every limiter for ratelimit.AllowAll{}.
+	var ipLim, globalLim, prLim ratelimit.Limiter = ratelimit.AllowAll{}, ratelimit.AllowAll{}, ratelimit.AllowAll{}
+	if cfg.RateLimitEnabled {
+		ipLim = ratelimit.NewMemory(cfg.RateLimitIPRPS, cfg.RateLimitIPBurst, cfg.RateLimitMaxKeys, 60*time.Second)
+		globalLim = ratelimit.NewMemory(cfg.RateLimitGlobalRPS, cfg.RateLimitGlobalBurst, cfg.RateLimitMaxKeys, 60*time.Second)
+		prLim = ratelimit.NewMemory(cfg.RateLimitPrincipalRPS, cfg.RateLimitPrincipalBurst, cfg.RateLimitMaxKeys, 60*time.Second)
+	}
+	trusted := parseCIDRs(cfg.RateLimitTrustedProxyCIDRs)
+
+	// throttleHook adapts authn.ThrottleEvent (rate-limit denials + failed root-token
+	// attempts) into an audit event. Pre-auth events (global/ip/root.auth) have no
+	// principal, so OrgID is left "" -> system chain; CallerFromContext is never called
+	// here since these fire before (or without) authentication.
+	throttleHook := func(ctx context.Context, ev authn.ThrottleEvent) {
+		action := "ratelimit.throttled"
+		if ev.Gate == "root.auth" {
+			action = "root.auth"
+		}
+		e := audit.Event{Action: action, Outcome: audit.OutcomeDenied, Detail: map[string]string{"gate": ev.Gate}}
+		if ev.IPPrefix != "" {
+			e.Detail["ip"] = ev.IPPrefix
+		}
+		if ev.PrincipalID != "" {
+			e.ActorID = ev.PrincipalID
+			e.Detail["auth_method"] = ev.AuthMethod
+		}
+		auditRec.Record(ctx, e)
+	}
+
+	authInterceptor := connect.WithInterceptors(authn.Interceptor(verifier, apikeyVerifier, cfg.RootToken, prLim, throttleHook))
 
 	signer := delegation.NewSigner(cfg.DelegationIssuer, keyMgr.Keyset)
 	delStore := delegation.NewStore(pool)
@@ -158,6 +191,12 @@ func runServer() {
 		apikey.NewHandler(apikeyStore, apikeyHasher, orgStore,
 			time.Duration(cfg.APIKeyMaxTTLSeconds)*time.Second, cfg.APIKeyAllowNeverExpire, 50, auditRec),
 	)
+
+	// Gate A wraps the whole mux (in front of /healthz, /readyz, and every RPC).
+	srv.Handler = server.RateLimitMiddleware(srv.Handler, server.RateLimitConfig{
+		IPLim: ipLim, GlobalLim: globalLim, TrustedProxies: trusted,
+		RootToken: []byte(cfg.RootToken), OnThrottle: throttleHook,
+	})
 
 	go func() {
 		log.Printf("base-servers listening on %s", cfg.HTTPAddr)
@@ -224,6 +263,25 @@ func runHealthcheck() {
 		log.Printf("healthcheck: /readyz status = %d, want 200", resp.StatusCode)
 		os.Exit(1)
 	}
+}
+
+// parseCIDRs splits a comma-separated list of CIDRs (BS_RATELIMIT_TRUSTED_PROXY_CIDRS)
+// into IPNets, skipping (and logging) any entry that fails to parse.
+func parseCIDRs(csv string) []*net.IPNet {
+	var out []*net.IPNet
+	for _, s := range strings.Split(csv, ",") {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		_, n, err := net.ParseCIDR(s)
+		if err != nil {
+			log.Printf("ratelimit: skipping invalid trusted proxy CIDR %q: %v", s, err)
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 func keycloakReachable(ctx context.Context, baseURL, realm string) error {
