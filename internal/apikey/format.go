@@ -7,11 +7,11 @@ import (
 )
 
 const (
-	Prefix     = "bsk_"
-	keyIDLen   = 16
-	secretLen  = 32
-	crcLen     = 6 // base62(uint32) padded to 6
-	alphabet   = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	Prefix    = "bsk_"
+	keyIDLen  = 16
+	secretLen = 32
+	crcLen    = 6 // base62(uint32) padded to 6
+	alphabet  = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 )
 
 // randBase62 returns n chars from the base62 alphabet using crypto/rand.
