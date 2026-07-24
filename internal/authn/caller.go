@@ -6,6 +6,8 @@ import "context"
 type Caller struct {
 	PrincipalID string // = 令牌 sub(= base-servers principal id)
 	SystemAdmin bool   // 经 root-token bootstrap 路径
+	AuthMethod  string // "oidc" | "apikey" | "root"
+	ReadOnly    bool   // apikey read-only keys only
 }
 
 type ctxKey struct{}

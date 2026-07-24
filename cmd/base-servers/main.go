@@ -99,7 +99,9 @@ func runServer() {
 	jwksURL := cfg.KeycloakURL + "/realms/" + cfg.KeycloakRealm + "/protocol/openid-connect/certs"
 	verifier := authn.NewVerifier(jwksURL, cfg.PublicIssuer,
 		[]string{cfg.OIDCLoginClientID, cfg.OIDCServiceClientID})
-	authInterceptor := connect.WithInterceptors(authn.Interceptor(verifier, cfg.RootToken))
+	// TODO(task 7): wire the real internal/apikey.Verifier here once it's
+	// constructed in main; nil disables the bsk_ API-key auth branch.
+	authInterceptor := connect.WithInterceptors(authn.Interceptor(verifier, nil, cfg.RootToken))
 
 	svc := principal.NewService(eng, principal.NewStore(pool))
 	orgStore := org.NewStore(pool)

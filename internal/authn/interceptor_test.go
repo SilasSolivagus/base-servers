@@ -24,7 +24,7 @@ func (fakeStreamingHandlerConn) ResponseTrailer() http.Header { return http.Head
 
 // 无令牌无 root → Unauthenticated。
 func TestInterceptorRejectsAnonymous(t *testing.T) {
-	ic := Interceptor(nil, "root-secret")
+	ic := Interceptor(nil, nil, "root-secret")
 	next := connect.UnaryFunc(func(ctx context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
 		t.Fatal("next should not be called for anonymous")
 		return nil, nil
@@ -38,7 +38,7 @@ func TestInterceptorRejectsAnonymous(t *testing.T) {
 
 // root token 命中 → Caller{SystemAdmin} 入 ctx,next 被调用。
 func TestInterceptorRootToken(t *testing.T) {
-	ic := Interceptor(nil, "root-secret")
+	ic := Interceptor(nil, nil, "root-secret")
 	var got Caller
 	next := connect.UnaryFunc(func(ctx context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
 		got, _ = CallerFromContext(ctx)
@@ -56,7 +56,7 @@ func TestInterceptorRootToken(t *testing.T) {
 
 // root token 未配置 → 该路径禁用(带 root 头也不放行)。
 func TestInterceptorRootDisabledWhenUnset(t *testing.T) {
-	ic := Interceptor(nil, "")
+	ic := Interceptor(nil, nil, "")
 	next := connect.UnaryFunc(func(ctx context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
 		t.Fatal("next should not be called")
 		return nil, nil
@@ -71,7 +71,7 @@ func TestInterceptorRootDisabledWhenUnset(t *testing.T) {
 // 未来若挂了 streaming RPC(现有 13 个都是 unary),必须 fail-closed:
 // interceptor 没有实现 streaming authn,不能悄悄放行未认证的 stream。
 func TestInterceptorRejectsStreaming(t *testing.T) {
-	ic := Interceptor(nil, "root-secret")
+	ic := Interceptor(nil, nil, "root-secret")
 	next := connect.StreamingHandlerFunc(func(ctx context.Context, conn connect.StreamingHandlerConn) error {
 		t.Fatal("next should not be called for a streaming RPC")
 		return nil
