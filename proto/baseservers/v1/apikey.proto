@@ -1,0 +1,42 @@
+syntax = "proto3";
+package baseservers.v1;
+option go_package = "github.com/SilasSolivagus/base-servers/gen/baseservers/v1;baseserversv1";
+
+service ApiKeyService {
+  rpc Issue(IssueApiKeyRequest) returns (IssueApiKeyResponse);
+  rpc Revoke(RevokeApiKeyRequest) returns (RevokeApiKeyResponse);
+  rpc List(ListApiKeysRequest) returns (ListApiKeysResponse);
+}
+
+message IssueApiKeyRequest {
+  string principal_id = 1;
+  string org_id = 2;
+  string name = 3;
+  int64  ttl_seconds = 4; // 0 = max policy (or never, if allowed)
+  bool   read_only = 5;
+}
+message IssueApiKeyResponse {
+  string key_id = 1;
+  string secret = 2;       // returned exactly once
+  int64  expires_at_unix = 3; // 0 = never
+}
+message RevokeApiKeyRequest { string key_id = 1; }
+message RevokeApiKeyResponse {}
+message ListApiKeysRequest {
+  string principal_id = 1;
+  int32  page_size = 2;
+  string page_token = 3; // opaque: RFC3339 created_at cursor
+}
+message ApiKeyMeta {
+  string key_id = 1;
+  string name = 2;
+  bool   read_only = 3;
+  bool   revoked = 4;
+  int64  created_at_unix = 5;
+  int64  expires_at_unix = 6;
+  int64  last_used_at_unix = 7;
+}
+message ListApiKeysResponse {
+  repeated ApiKeyMeta keys = 1;
+  string next_page_token = 2;
+}

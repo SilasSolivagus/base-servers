@@ -9,6 +9,7 @@ func TestReadSafeAllowsReadsDeniesMutations(t *testing.T) {
 		"/baseservers.v1.AuditService/List",
 		"/baseservers.v1.AuditService/Verify",
 		"/baseservers.v1.PrincipalService/GetPrincipal",
+		"/baseservers.v1.ApiKeyService/List",
 	}
 	for _, p := range reads {
 		if !IsReadSafe(p) {

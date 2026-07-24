@@ -17,10 +17,9 @@ package authn
 //	                   registered yet, so none is allowlisted)
 //	PrincipalService:  GetPrincipal (read) -> safe; CreatePrincipal (mutation) -> NOT safe
 //	RoleService:       CreateRole, AssignRole -> mutations, NOT safe
-//
-// ApiKeyService has no generated Connect procedures yet (pending a later
-// task), so nothing for it is allowlisted here either.
+//	ApiKeyService:     List (read) -> safe; Issue, Revoke (mutations) -> NOT safe
 var readSafeProcedures = map[string]bool{
+	"/baseservers.v1.ApiKeyService/List":               true,
 	"/baseservers.v1.AuditService/List":                true,
 	"/baseservers.v1.AuditService/Verify":              true,
 	"/baseservers.v1.AuthzService/Check":               true,
