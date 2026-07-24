@@ -23,7 +23,7 @@ func TestAuthzHandlerRegisterThenCheck(t *testing.T) {
 	o, _ := org.NewStore(pool).CreateOrg(ctx, "Acme")
 	st := authz.NewStore(pool)
 	mux := http.NewServeMux()
-	authz.NewHandler(authz.NewService(st), st, org.NewStore(pool), audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	authz.NewHandler(authz.NewService(st), st, org.NewStore(pool), audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
@@ -53,7 +53,7 @@ func TestAuthzHandlerCheckBadOrgIDIsInvalidArgument(t *testing.T) {
 	ctx := context.Background()
 	st := authz.NewStore(pool)
 	mux := http.NewServeMux()
-	authz.NewHandler(authz.NewService(st), st, org.NewStore(pool), audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	authz.NewHandler(authz.NewService(st), st, org.NewStore(pool), audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 

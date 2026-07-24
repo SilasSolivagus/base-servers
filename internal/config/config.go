@@ -22,6 +22,9 @@ type Config struct {
 	PublicIssuer            string // BS_PUBLIC_ISSUER,如 http://localhost:8088/oidc/realms/base-servers
 	RootToken               string // BS_ROOT_TOKEN(bootstrap break-glass)
 	AuditBuffer             int    // AUDIT_BUFFER:异步审计记录器缓冲区大小
+	APIKeyPepper            string // BS_APIKEY_PEPPER(base64,>=32字节)—必需,fail-closed
+	APIKeyMaxTTLSeconds     int    // BS_APIKEY_MAX_TTL_SECONDS,默认7776000=90天
+	APIKeyAllowNeverExpire  bool   // BS_APIKEY_ALLOW_NEVER_EXPIRE,默认false
 }
 
 func env(key, def string) string {
@@ -59,6 +62,9 @@ func Load() (Config, error) {
 		PublicIssuer:            os.Getenv("BS_PUBLIC_ISSUER"),
 		RootToken:               os.Getenv("BS_ROOT_TOKEN"),
 		AuditBuffer:             envInt("AUDIT_BUFFER", 4096),
+		APIKeyPepper:            os.Getenv("BS_APIKEY_PEPPER"),
+		APIKeyMaxTTLSeconds:     envInt("BS_APIKEY_MAX_TTL_SECONDS", 7776000),
+		APIKeyAllowNeverExpire:  os.Getenv("BS_APIKEY_ALLOW_NEVER_EXPIRE") == "true",
 	}
 	if c.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")

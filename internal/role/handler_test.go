@@ -24,7 +24,7 @@ func TestRoleHandlerCreateAndAssign(t *testing.T) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	role.NewHandler(role.NewService(role.NewStore(pool)), org.NewStore(pool), audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	role.NewHandler(role.NewService(role.NewStore(pool)), org.NewStore(pool), audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
@@ -46,7 +46,7 @@ func TestRoleHandlerCreateAndAssign(t *testing.T) {
 func TestRoleHandlerRejectsBadScope(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	mux := http.NewServeMux()
-	role.NewHandler(role.NewService(role.NewStore(pool)), org.NewStore(pool), audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	role.NewHandler(role.NewService(role.NewStore(pool)), org.NewStore(pool), audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	c := baseserversv1connect.NewRoleServiceClient(http.DefaultClient, srv.URL, testsupport.ClientOpts()...)

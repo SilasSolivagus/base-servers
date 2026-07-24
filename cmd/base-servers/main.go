@@ -12,6 +12,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/SilasSolivagus/base-servers/internal/apikey"
 	"github.com/SilasSolivagus/base-servers/internal/audit"
 	"github.com/SilasSolivagus/base-servers/internal/authn"
 	"github.com/SilasSolivagus/base-servers/internal/authz"
@@ -99,7 +100,6 @@ func runServer() {
 	jwksURL := cfg.KeycloakURL + "/realms/" + cfg.KeycloakRealm + "/protocol/openid-connect/certs"
 	verifier := authn.NewVerifier(jwksURL, cfg.PublicIssuer,
 		[]string{cfg.OIDCLoginClientID, cfg.OIDCServiceClientID})
-	authInterceptor := connect.WithInterceptors(authn.Interceptor(verifier, cfg.RootToken))
 
 	svc := principal.NewService(eng, principal.NewStore(pool))
 	orgStore := org.NewStore(pool)
@@ -107,6 +107,20 @@ func runServer() {
 	roleSvc := role.NewService(role.NewStore(pool))
 	authzStore := authz.NewStore(pool)
 	authzSvc := authz.NewService(authzStore)
+
+	// API key pepper fail-closed:未设/非法 base64/短于32字节 → 拒绝启动,绝不降级明文比较。
+	pepper, err := apikey.LoadPepper(cfg.APIKeyPepper)
+	if err != nil {
+		log.Fatalf("api key pepper: %v", err)
+	}
+	apikeyStore := apikey.NewStore(pool)
+	apikeyHasher, err := apikey.NewHasher(pepper)
+	if err != nil {
+		log.Fatalf("api key hasher: %v", err)
+	}
+	apikeyVerifier := apikey.NewVerifier(apikeyStore, apikeyHasher)
+
+	authInterceptor := connect.WithInterceptors(authn.Interceptor(verifier, apikeyVerifier, cfg.RootToken))
 
 	auditStore := audit.NewStore(pool)
 	auditRec := audit.NewRecorder(auditStore, cfg.AuditBuffer)
@@ -140,6 +154,8 @@ func runServer() {
 		delegation.NewHandler(delSvc, delChecker, auditRec),
 		delegation.NewJWKSHandler(signer),
 		audit.NewHandler(auditStore, orgStore),
+		apikey.NewHandler(apikeyStore, apikeyHasher, orgStore,
+			time.Duration(cfg.APIKeyMaxTTLSeconds)*time.Second, cfg.APIKeyAllowNeverExpire, 50, auditRec),
 	)
 
 	go func() {

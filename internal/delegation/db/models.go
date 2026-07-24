@@ -8,6 +8,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ApiKey struct {
+	KeyID       string
+	PrincipalID string
+	OrgID       string
+	Name        string
+	Hash        []byte
+	HashVersion int16
+	ReadOnly    bool
+	Revoked     bool
+	CreatedAt   pgtype.Timestamptz
+	ExpiresAt   pgtype.Timestamptz
+	LastUsedAt  pgtype.Timestamptz
+}
+
 type AuditEvent struct {
 	Chain       string
 	Seq         int64

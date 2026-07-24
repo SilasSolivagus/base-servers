@@ -21,7 +21,7 @@ func TestHandlerCreateAndGet(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	svc := principal.NewService(fake.New(), principal.NewStore(pool))
 	mux := http.NewServeMux()
-	principal.NewHandler(svc, audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	principal.NewHandler(svc, audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
@@ -56,7 +56,7 @@ func TestHandlerCreatePrincipalInvalidInput(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	svc := principal.NewService(fake.New(), principal.NewStore(pool))
 	mux := http.NewServeMux()
-	principal.NewHandler(svc, audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	principal.NewHandler(svc, audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
@@ -93,7 +93,7 @@ func TestHandlerGetPrincipalNotFound(t *testing.T) {
 	pool := testsupport.StartPostgres(t)
 	svc := principal.NewService(fake.New(), principal.NewStore(pool))
 	mux := http.NewServeMux()
-	principal.NewHandler(svc, audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, testsupport.RootToken)))
+	principal.NewHandler(svc, audit.NewRecorder(nil, 1)).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, nil, testsupport.RootToken)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
