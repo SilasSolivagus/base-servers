@@ -70,6 +70,32 @@ func TestTransitionedEdgeWithCooldown(t *testing.T) {
 	}
 }
 
+func TestTransitionedFlappingWithinCooldown(t *testing.T) {
+	clk := &fixedClock{t: time.Unix(1000, 0)}
+	l := NewMemoryClock(1, 1, 128, 60*time.Second, clk.now)
+	defer l.Close()
+
+	l.Allow("k") // consume the one token
+	_, _, tr1 := l.Allow("k")
+	if !tr1 {
+		t.Fatal("first denial after allow must transition=true")
+	}
+
+	clk.add(1 * time.Second) // refill exactly one token
+	ok, _, _ := l.Allow("k")
+	if !ok {
+		t.Fatal("refilled token should allow this call (flips wasLimited back to false)")
+	}
+
+	// Immediately (still well within the 60s cooldown from the first emit)
+	// deny again: this flap (allow -> deny) must NOT re-transition, since the
+	// cooldown gate suppresses the re-emit even though wasLimited was reset.
+	_, _, tr2 := l.Allow("k")
+	if tr2 {
+		t.Fatal("flapping allow->deny within cooldown must NOT re-transition")
+	}
+}
+
 func TestKeysAreIndependentAndBounded(t *testing.T) {
 	l := NewMemory(1, 1, 4, time.Minute) // 4 keys per shard cap
 	defer l.Close()

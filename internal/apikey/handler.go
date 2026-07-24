@@ -11,6 +11,7 @@ import (
 	"github.com/SilasSolivagus/base-servers/gen/baseservers/v1/baseserversv1connect"
 	"github.com/SilasSolivagus/base-servers/internal/audit"
 	"github.com/SilasSolivagus/base-servers/internal/authn"
+	"github.com/SilasSolivagus/base-servers/internal/authz"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -22,10 +23,11 @@ type Handler struct {
 	allowNeverExpire bool
 	keyCap           int
 	rec              audit.Recorder
+	authz            authz.Checker
 }
 
-func NewHandler(store *Store, h *Hasher, members authn.MemberChecker, maxTTL time.Duration, allowNeverExpire bool, keyCap int, rec audit.Recorder) *Handler {
-	return &Handler{store, h, members, maxTTL, allowNeverExpire, keyCap, rec}
+func NewHandler(store *Store, h *Hasher, members authn.MemberChecker, maxTTL time.Duration, allowNeverExpire bool, keyCap int, rec audit.Recorder, authzChecker authz.Checker) *Handler {
+	return &Handler{store, h, members, maxTTL, allowNeverExpire, keyCap, rec, authzChecker}
 }
 
 func (h *Handler) Register(mux *http.ServeMux, opts ...connect.HandlerOption) {
@@ -123,7 +125,13 @@ func (h *Handler) Revoke(ctx context.Context, req *connect.Request[v1.RevokeApiK
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	if !caller.SystemAdmin && caller.PrincipalID != rec.PrincipalID {
-		return nil, denied("may only revoke your own keys")
+		orgAdmin, aerr := h.authz.Check(ctx, caller.PrincipalID, "org.manage", authz.Resource{OrgID: rec.OrgID})
+		if aerr != nil {
+			return nil, connect.NewError(connect.CodeInternal, aerr)
+		}
+		if !orgAdmin {
+			return nil, denied("may only revoke your own keys or keys in an org you administer")
+		}
 	}
 	if _, err := h.store.Revoke(ctx, req.Msg.KeyId); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)

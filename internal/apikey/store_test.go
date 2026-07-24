@@ -65,3 +65,80 @@ func TestStoreListPaginatesAndCounts(t *testing.T) {
 		t.Fatal("page2 must be strictly older than page1")
 	}
 }
+
+// TestTouchLastUsedThrottles locks the throttle in TouchApiKeyLastUsed's SQL
+// (`last_used_at IS NULL OR last_used_at < now() - interval '1 minute'`): the
+// first call sets last_used_at, but an immediate second call must NOT advance
+// it again.
+func TestTouchLastUsedThrottles(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	s := apikey.NewStore(pool)
+	ctx := context.Background()
+	if err := s.Insert(ctx, apikey.NewKey{KeyID: "k1", PrincipalID: "p1", OrgID: "o1", Hash: []byte("h1")}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.TouchLastUsed(ctx, "k1"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetByKeyID(ctx, "k1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LastUsedAt == nil {
+		t.Fatal("expected last_used_at to be set after first TouchLastUsed")
+	}
+	first := *got.LastUsedAt
+
+	if err := s.TouchLastUsed(ctx, "k1"); err != nil {
+		t.Fatal(err)
+	}
+	got2, err := s.GetByKeyID(ctx, "k1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got2.LastUsedAt == nil {
+		t.Fatal("expected last_used_at to remain set")
+	}
+	if !got2.LastUsedAt.Equal(first) {
+		t.Fatalf("second immediate TouchLastUsed must be throttled (unchanged), got %v want %v", got2.LastUsedAt, first)
+	}
+}
+
+// TestListByPrincipalClampsLimit exercises ListByPrincipal's limit clamp
+// (limit<=0 or >200 -> 100) without breaking the underlying query, and also
+// confirms an in-range limit is actually honored.
+func TestListByPrincipalClampsLimit(t *testing.T) {
+	pool := testsupport.StartPostgres(t)
+	s := apikey.NewStore(pool)
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		if err := s.Insert(ctx, apikey.NewKey{KeyID: string(rune('a' + i)), PrincipalID: "p1", OrgID: "o1", Hash: []byte("h")}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got0, err := s.ListByPrincipal(ctx, "p1", nil, 0)
+	if err != nil {
+		t.Fatalf("limit=0 (clamped to 100): %v", err)
+	}
+	if len(got0) != 3 {
+		t.Fatalf("limit=0 expected all 3 keys, got %d", len(got0))
+	}
+
+	gotBig, err := s.ListByPrincipal(ctx, "p1", nil, 9999)
+	if err != nil {
+		t.Fatalf("limit=9999 (clamped to 100): %v", err)
+	}
+	if len(gotBig) != 3 {
+		t.Fatalf("limit=9999 expected all 3 keys, got %d", len(gotBig))
+	}
+
+	got2, err := s.ListByPrincipal(ctx, "p1", nil, 2)
+	if err != nil {
+		t.Fatalf("limit=2: %v", err)
+	}
+	if len(got2) != 2 {
+		t.Fatalf("limit=2 must be honored (not clamped), got %d", len(got2))
+	}
+}
