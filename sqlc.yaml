@@ -41,3 +41,8 @@ sql:
     queries: db/query/audit.sql
     gen:
       go: { package: db, out: internal/audit/db, sql_package: pgx/v5 }
+  - engine: postgresql
+    schema: db/migrations
+    queries: db/query/apikey.sql
+    gen:
+      go: { package: db, out: internal/apikey/db, sql_package: pgx/v5 }
