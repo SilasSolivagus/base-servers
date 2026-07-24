@@ -189,7 +189,7 @@ func runServer() {
 		delegation.NewJWKSHandler(signer),
 		audit.NewHandler(auditStore, orgStore),
 		apikey.NewHandler(apikeyStore, apikeyHasher, orgStore,
-			time.Duration(cfg.APIKeyMaxTTLSeconds)*time.Second, cfg.APIKeyAllowNeverExpire, 50, auditRec),
+			time.Duration(cfg.APIKeyMaxTTLSeconds)*time.Second, cfg.APIKeyAllowNeverExpire, 50, auditRec, authzSvc),
 	)
 
 	// Gate A wraps the whole mux (in front of /healthz, /readyz, and every RPC).
