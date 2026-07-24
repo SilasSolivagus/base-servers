@@ -148,3 +148,28 @@ func TestGateARootAuthTelemetryOnceOnInvalid(t *testing.T) {
 		t.Fatalf("expected exactly 1 root.auth event (present+invalid only), got %d", got)
 	}
 }
+
+func TestGateARootAuthTelemetryDebouncedUnderFlood(t *testing.T) {
+	var events int64
+	cfg := RateLimitConfig{
+		IPLim: ratelimit.AllowAll{}, GlobalLim: ratelimit.AllowAll{},
+		RootToken: []byte("rootsecret"),
+		OnThrottle: func(_ context.Context, ev authn.ThrottleEvent) {
+			if ev.Gate == "root.auth" {
+				atomic.AddInt64(&events, 1)
+			}
+		},
+	}
+	h := RateLimitMiddleware(okHandler(new(int64)), cfg)
+	const n = 50
+	for i := 0; i < n; i++ {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/x", nil)
+		r.RemoteAddr = "8.8.8.8:1"
+		r.Header.Set("X-BS-Root-Token", "nope")
+		h.ServeHTTP(w, r)
+	}
+	if got := atomic.LoadInt64(&events); got != 1 {
+		t.Fatalf("expected exactly 1 root.auth event across a %d-request flood (debounced), got %d", n, got)
+	}
+}

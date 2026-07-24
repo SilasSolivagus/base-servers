@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/SilasSolivagus/base-servers/internal/authn"
@@ -18,17 +19,43 @@ type RateLimitConfig struct {
 	OnThrottle       authn.ThrottleHook
 }
 
+// rootAuthCooldown bounds how often a present-but-invalid root token can emit a root.auth
+// telemetry event. Without this, a flood of requests carrying a bogus X-BS-Root-Token would
+// emit one event per request — before Gate A's buckets even run — filling the async audit
+// buffer and starving real security events (spec R12/§7).
+const rootAuthCooldown = 60 * time.Second
+
+// rootAuthDebounce tracks the last root.auth emit so it can be rate-limited independently of
+// Gate A's IP/global buckets.
+type rootAuthDebounce struct {
+	mu       sync.Mutex
+	lastEmit time.Time
+}
+
+func (d *rootAuthDebounce) allow(now time.Time) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if now.Sub(d.lastEmit) <= rootAuthCooldown {
+		return false
+	}
+	d.lastEmit = now
+	return true
+}
+
 // RateLimitMiddleware is Gate A: pre-auth per-IP + global token buckets in front of the
 // Connect mux. /healthz is exempt; /readyz is NOT (it pings backends). Valid root token
-// bypasses; a present-but-invalid root token emits one root.auth event.
+// bypasses; a present-but-invalid root token emits a debounced root.auth event (at most once
+// per rootAuthCooldown), since this check runs before the IP/global buckets and is not
+// otherwise capped by them.
 func RateLimitMiddleware(next http.Handler, cfg RateLimitConfig) http.Handler {
+	debounce := &rootAuthDebounce{}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/healthz" { // static, no backend — always exempt
 			next.ServeHTTP(w, r)
 			return
 		}
 		present, valid := authn.CheckRoot(r.Header, cfg.RootToken)
-		if present && !valid && cfg.OnThrottle != nil {
+		if present && !valid && cfg.OnThrottle != nil && debounce.allow(time.Now()) {
 			cfg.OnThrottle(r.Context(), authn.ThrottleEvent{Gate: "root.auth", Reason: "invalid_root_token"})
 		}
 		if present && valid {
@@ -96,7 +123,9 @@ func ipTrusted(ip net.IP, trusted []*net.IPNet) bool {
 }
 
 // ipKey buckets IPv4 by /24 and IPv6 by /64 so a single large allocation can't spawn
-// unbounded distinct buckets.
+// unbounded distinct buckets. The IPv4 /24 (vs. a /32-per-address bucket) is deliberate:
+// it confines an attacker who owns a whole /24 to one shared bucket (evasion-resistance),
+// and this same prefix is reused as the audit IP prefix.
 func ipKey(ip net.IP) string {
 	if ip == nil {
 		return "nil"

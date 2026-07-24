@@ -49,6 +49,7 @@ services:
       BS_SERVICE_CLIENT_SECRET: ${BS_SERVICE_CLIENT_SECRET:?set BS_SERVICE_CLIENT_SECRET}
       BS_PUBLIC_ISSUER: ${BS_PUBLIC_URL:-http://localhost:8088}/oidc/realms/base-servers
       BS_ROOT_TOKEN: ${BS_ROOT_TOKEN:?set BS_ROOT_TOKEN for bootstrap}
+      BS_APIKEY_PEPPER: ${BS_APIKEY_PEPPER:?set BS_APIKEY_PEPPER to base64 of 32 bytes}
     ports: ["8081:8081"]
     depends_on:
       postgres:

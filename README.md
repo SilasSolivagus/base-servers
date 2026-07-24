@@ -56,10 +56,11 @@ Consumers (any system, or an AI agent) talk to the **base-servers API layer** ov
 One command brings up the whole stack (Postgres + Keycloak + base-servers). On boot, base-servers applies its own DB migrations, provisions the `base-servers` realm and its OIDC clients, and self-provisions its delegation signing key — no manual schema or realm steps.
 
 ```bash
-# Three secrets the service refuses to start without (fail-closed):
+# Four secrets the service refuses to start without (fail-closed):
 export BS_SIGNING_KEK=$(head -c 32 /dev/urandom | base64)          # delegation signing-key encryption
 export BS_SERVICE_CLIENT_SECRET=svc-$(head -c 12 /dev/urandom | base64 | tr -dc a-z0-9)
 export BS_ROOT_TOKEN=$(head -c 24 /dev/urandom | base64)           # break-glass bootstrap credential
+export BS_APIKEY_PEPPER=$(head -c 32 /dev/urandom | base64)        # API-key hashing pepper (>=32 bytes)
 
 docker compose -f deploy/docker-compose.yml up -d --build
 curl -fsS localhost:8081/readyz     # -> ready  (may take a minute on first boot)
