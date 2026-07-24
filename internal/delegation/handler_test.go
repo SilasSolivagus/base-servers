@@ -41,7 +41,7 @@ func newTestServer(t *testing.T, pool *pgxpool.Pool, typer fakeTyper, rec audit.
 	svc := delegation.NewService(st, sig, typer)
 	checker := delegation.NewChecker(st, sig, authz.NewService(authz.NewStore(pool)))
 	mux := http.NewServeMux()
-	delegation.NewHandler(svc, checker, rec).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, nil, testsupport.RootToken)))
+	delegation.NewHandler(svc, checker, rec).Register(mux, connect.WithInterceptors(authn.Interceptor(nil, nil, testsupport.RootToken, nil, nil)))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv

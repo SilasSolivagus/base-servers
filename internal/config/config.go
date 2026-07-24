@@ -25,6 +25,16 @@ type Config struct {
 	APIKeyPepper            string // BS_APIKEY_PEPPER(base64,>=32字节)—必需,fail-closed
 	APIKeyMaxTTLSeconds     int    // BS_APIKEY_MAX_TTL_SECONDS,默认7776000=90天
 	APIKeyAllowNeverExpire  bool   // BS_APIKEY_ALLOW_NEVER_EXPIRE,默认false
+
+	RateLimitEnabled           bool    // BS_RATELIMIT_ENABLED,默认true—kill switch
+	RateLimitIPRPS             float64 // BS_RATELIMIT_IP_RPS,默认20
+	RateLimitIPBurst           int     // BS_RATELIMIT_IP_BURST,默认40
+	RateLimitGlobalRPS         float64 // BS_RATELIMIT_GLOBAL_RPS,默认500(灾难兜底,非主限流)
+	RateLimitGlobalBurst       int     // BS_RATELIMIT_GLOBAL_BURST,默认1000
+	RateLimitPrincipalRPS      float64 // BS_RATELIMIT_PRINCIPAL_RPS,默认10
+	RateLimitPrincipalBurst    int     // BS_RATELIMIT_PRINCIPAL_BURST,默认20
+	RateLimitTrustedProxyCIDRs string  // BS_RATELIMIT_TRUSTED_PROXY_CIDRS,逗号分隔
+	RateLimitMaxKeys           int     // BS_RATELIMIT_MAX_KEYS,默认4096
 }
 
 func env(key, def string) string {
@@ -40,6 +50,18 @@ func envInt(key string, def int) int {
 		return def
 	}
 	n, err := strconv.Atoi(v)
+	if err != nil {
+		return def
+	}
+	return n
+}
+
+func envFloat(key string, def float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.ParseFloat(v, 64)
 	if err != nil {
 		return def
 	}
@@ -65,6 +87,16 @@ func Load() (Config, error) {
 		APIKeyPepper:            os.Getenv("BS_APIKEY_PEPPER"),
 		APIKeyMaxTTLSeconds:     envInt("BS_APIKEY_MAX_TTL_SECONDS", 7776000),
 		APIKeyAllowNeverExpire:  os.Getenv("BS_APIKEY_ALLOW_NEVER_EXPIRE") == "true",
+
+		RateLimitEnabled:           os.Getenv("BS_RATELIMIT_ENABLED") != "false",
+		RateLimitIPRPS:             envFloat("BS_RATELIMIT_IP_RPS", 20),
+		RateLimitIPBurst:           envInt("BS_RATELIMIT_IP_BURST", 40),
+		RateLimitGlobalRPS:         envFloat("BS_RATELIMIT_GLOBAL_RPS", 500),
+		RateLimitGlobalBurst:       envInt("BS_RATELIMIT_GLOBAL_BURST", 1000),
+		RateLimitPrincipalRPS:      envFloat("BS_RATELIMIT_PRINCIPAL_RPS", 10),
+		RateLimitPrincipalBurst:    envInt("BS_RATELIMIT_PRINCIPAL_BURST", 20),
+		RateLimitTrustedProxyCIDRs: env("BS_RATELIMIT_TRUSTED_PROXY_CIDRS", "127.0.0.0/8,::1/128,172.16.0.0/12"),
+		RateLimitMaxKeys:           envInt("BS_RATELIMIT_MAX_KEYS", 4096),
 	}
 	if c.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")

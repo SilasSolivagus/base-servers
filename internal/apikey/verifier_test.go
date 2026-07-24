@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/SilasSolivagus/base-servers/internal/apikey"
+	"github.com/SilasSolivagus/base-servers/internal/audit"
 	"github.com/SilasSolivagus/base-servers/internal/testsupport"
 )
 
@@ -15,7 +16,7 @@ func TestVerifierAcceptsValidRejectsAll(t *testing.T) {
 	store := apikey.NewStore(pool)
 	pepper, _ := apikey.LoadPepper(base64.StdEncoding.EncodeToString(make([]byte, 32)))
 	h, _ := apikey.NewHasher(pepper)
-	v := apikey.NewVerifier(store, h)
+	v := apikey.NewVerifier(store, h, &audit.FakeRecorder{})
 	ctx := context.Background()
 
 	pt, keyID, secret, _ := apikey.Generate()
@@ -61,7 +62,7 @@ func TestVerifierRejectsWrongSecretForKnownKeyID(t *testing.T) {
 	store := apikey.NewStore(pool)
 	pepper, _ := apikey.LoadPepper(base64.StdEncoding.EncodeToString(make([]byte, 32)))
 	h, _ := apikey.NewHasher(pepper)
-	v := apikey.NewVerifier(store, h)
+	v := apikey.NewVerifier(store, h, &audit.FakeRecorder{})
 	ctx := context.Background()
 
 	// A fresh, well-formed token: valid prefix/shape and a correctly
@@ -87,7 +88,7 @@ func TestVerifierRejectsExpired(t *testing.T) {
 	store := apikey.NewStore(pool)
 	pepper, _ := apikey.LoadPepper(base64.StdEncoding.EncodeToString(make([]byte, 32)))
 	h, _ := apikey.NewHasher(pepper)
-	v := apikey.NewVerifier(store, h)
+	v := apikey.NewVerifier(store, h, &audit.FakeRecorder{})
 	ctx := context.Background()
 	pt, keyID, secret, _ := apikey.Generate()
 	past := time.Now().Add(-time.Minute)

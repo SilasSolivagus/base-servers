@@ -1,4 +1,7 @@
 # 单一公共前门:/oidc/* 转 Keycloak(中性路径),其余转 base-servers。
+# reverse_proxy 默认会设置 X-Forwarded-For(未被此处的 header_up 覆盖/剥离),
+# base-servers 的 Gate A 信任 compose 网关网络(默认 BS_RATELIMIT_TRUSTED_PROXY_CIDRS
+# 含 172.16.0.0/12)来读取该头以取真实客户端 IP。
 :80 {
 	handle_path /oidc/* {
 		reverse_proxy keycloak:8080
